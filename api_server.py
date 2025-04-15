@@ -36,6 +36,12 @@ class FeedbackRequest(BaseModel):
     reward: float
     done: bool
 
+class GenerationRequest(BaseModel):
+    prompt: str
+    max_new_tokens: int = 100
+    temperature: float = 1.0
+    top_p: float = 0.9
+    do_sample: bool = True
 
 app = FastAPI()
 agent = DummyAgent()
@@ -63,6 +69,16 @@ async def step(req: StepRequest):
 
     return {"action": action.item(), "value": value.item()}
 
+@app.post("/generate", response_class=PlainTextResponse)
+def generate_text(request: GenerationRequest):
+    response = agent.generate_text(
+        prompt=request.prompt,
+        max_new_tokens=request.max_new_tokens,
+        temperature=request.temperature,
+        top_p=request.top_p,
+        do_sample=request.do_sample
+    )
+    return response
 
 @app.post("/feedback")
 async def feedback(req: FeedbackRequest):
