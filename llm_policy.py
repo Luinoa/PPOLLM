@@ -29,7 +29,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class LLMAgent(nn.Module):
-    def __init__(self, normalization_mode='token', load_path=None, load_8bit=False, batch_size=2):
+    def __init__(self, normalization_mode='token', load_path=None, load_8bit=False, batch_size=2, inference=False):
         super().__init__()
 
         self.load_8bit = load_8bit
@@ -65,12 +65,15 @@ class LLMAgent(nn.Module):
         )
 
         self.llm = self._init_llm()
-
+        self.inference = inference
         if load_path:
             self.load(load_path)
         else:
             self.actor = self._init_actor().to(self.device)
-            self.critic = self._init_critic().to(self.device)
+            if not inference:
+                self.critic = self._init_critic().to(self.device)
+        if inference:
+            self.actor.eval()
 
     def _init_llm(self):
         model = AutoModelForCausalLM.from_pretrained(
@@ -132,6 +135,7 @@ class LLMAgent(nn.Module):
         return critic
 
     def save(self, epoch, exp_path):
+        assert not self.inference
         print("save model")
         exp_path = os.path.join(exp_path, "epoch_{:04d}".format(epoch))
 
@@ -139,16 +143,19 @@ class LLMAgent(nn.Module):
         # save lora
         self.actor.save_pretrained(exp_path)
         # save critic
-        # torch.save(self.critic.v_head.state_dict(), os.path.join(exp_path, "critic.pth"))
+        torch.save(self.critic.v_head.state_dict(), os.path.join(exp_path, "critic.pth"))
 
     def load(self, exp_path):
         print("load model")
         lora_weights = exp_path
-        # critic_weights = os.path.join(exp_path, "critic.pth")
         self.actor = self._init_actor(lora_weights).to(self.device)
-        # self.critic = self._init_critic(critic_weights).to(self.device)
+
+        if not self.inference:
+            critic_weights = os.path.join(exp_path, "critic.pth")
+            self.critic = self._init_critic(critic_weights).to(self.device)
 
     def get_value(self, x):
+        assert not self.inference
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs["attention_mask"].to(self.device)
@@ -191,8 +198,8 @@ class LLMAgent(nn.Module):
             input_ids = batch_input["input_ids"]
             attention_mask = batch_input["attention_mask"]
 
-            # Forward pass (no grad if warmup)
-            with torch.no_grad() if is_warmup else torch.enable_grad():
+            # Forward pass (no grad if warmup or inference)
+            with torch.no_grad() if is_warmup or self.inference else torch.enable_grad():
                 outputs = self.actor(input_ids, attention_mask=attention_mask)
 
             logits = torch.log_softmax(outputs.logits, dim=-1)
@@ -249,10 +256,38 @@ class LLMAgent(nn.Module):
         log_probs = torch.cat(log_probs)
         entroy = torch.cat(entroy)
 
-        if return_value:
+        if return_value and not self.inference:
             return action, log_probs, entroy, self.get_value(prompt)
         else:
             return action, log_probs, entroy, None
+
+    # Normally generate texts
+    def generate_text(
+            self,
+            prompt,
+            max_new_tokens=30,
+            temperature=1.0,
+            top_p=0.9,
+            do_sample=True,
+            use_grad=False,
+    ):
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+        context_manager = torch.enable_grad() if use_grad or self.inference else torch.no_grad()
+        with context_manager:
+            outputs = self.actor.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
+
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            return generated_text
+
 
     def clean(self):
         torch.cuda.empty_cache()
