@@ -54,7 +54,7 @@ class PPOAgentServer:
         session = self.sessions[task_id]
 
         # Get action, logprob, and value estimate
-        with torch.no_grad() if self.inference else torch.enable_grad():
+        with torch.no_grad():
             action, logprob, _, value = self.agent.get_action_and_value([obs], return_value=False)
         if self.inference:
             self.agent.clean()
