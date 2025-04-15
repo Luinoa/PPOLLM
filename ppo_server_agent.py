@@ -3,6 +3,8 @@ import torch
 import uuid
 from typing import Dict, Optional, Tuple, List, Union
 
+from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
+
 
 class LLMTaskSession:
     """Per-task session to accumulate interactions and trigger training if allowed."""
@@ -51,17 +53,20 @@ class PPOAgentServer:
 
         session = self.sessions[task_id]
 
-        # Convert observation into tensor if needed
-        input_tensor = self.agent.tokenize(obs)
-
         # Get action, logprob, and value estimate
-        with torch.no_grad():
-            action, logprob, _, value = self.agent.get_action_and_value(input_tensor)
+        with torch.no_grad() if self.inference else torch.enable_grad():
+            action, logprob, _, value = self.agent.get_action_and_value([obs], return_value=False)
+        if self.inference:
+            self.agent.clean()
+        action_sampled = action.cpu().numpy()[0]
 
-        # Store transition for tracking purposes (even though no training)
-        session.store(input_tensor, action, logprob, value)
+        # TODO: Store transition for tracking purposes
+        """
+        if not self.inference
+            session.store()
+        """
 
-        return action, {"done": False}
+        return action_sampled
 
     def close_task(self, task_id: str):
         """Optionally remove a task to free memory."""
@@ -71,7 +76,3 @@ class PPOAgentServer:
     def check_task(self, task_id: str):
         """Check if a task is valid."""
         return task_id in self.sessions
-
-    def save(self, *args, **kwargs):
-        """Allow saving of the agent model if needed."""
-        return self.agent.save(*args, **kwargs)

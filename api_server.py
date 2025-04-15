@@ -34,6 +34,10 @@ class PlainTextResponse:
     task_id: str
     response: str
 
+class ActionResponse:
+    task_id: str
+    action: int
+
 # Instantiate the PPO agent with the LLM agent (inference mode by default)
 agent = LLMAgent(normalization_mode="word", batch_size=2, inference=True)
 ppo_agent = PPOAgentServer(agent=agent)
@@ -59,13 +63,13 @@ async def detach_task(task_id: str):
 @app.post("/step")
 async def step(req: StepRequest):
     task_id = req.task_id
-    obs = req.observation
+    obs = req.obs
 
     if not ppo_agent.check_task(task_id):
         return {"error": "Invalid task ID"}
 
     response = ppo_agent.step(task_id, obs)
-    return response
+    return {"task_id": task_id, "action": int(response)}
 
 
 @app.post("/generate", response_class=PlainTextResponse)
@@ -95,7 +99,7 @@ async def feedback(req: FeedbackRequest):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inference", action="store_true", help="Run in inference-only mode")
+    parser.add_argument("-i", "--inference", action="store_true", help="Run in inference-only mode")
     args = parser.parse_args()
 
     agent.train_mode = not args.inference
