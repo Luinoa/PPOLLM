@@ -38,10 +38,6 @@ class ActionResponse:
     task_id: str
     action: int
 
-# Instantiate the PPO agent with the LLM agent (inference mode by default)
-agent = LLMAgent(normalization_mode="word", batch_size=2, inference=True)
-ppo_agent = PPOAgentServer(agent=agent)
-
 # In-memory task states
 app = FastAPI()
 
@@ -102,8 +98,12 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--inference", action="store_true", help="Run in inference-only mode")
     args = parser.parse_args()
 
-    agent.train_mode = not args.inference
-    mode = "inference" if args.inference else "training"
-    print(f"[MODE] Running in {mode} mode")
+    # Instantiate the PPO agent with the LLM agent (inference mode by default)
+    agent = LLMAgent(normalization_mode="word", batch_size=2, inference=args.inference)
+    ppo_agent = PPOAgentServer(agent=agent, inference=args.inference)
+    if args.inference:
+        print("[INFO] Running in inference-only mode")
+    else:
+        print("[INFO] Running in training mode")
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
