@@ -6,8 +6,9 @@ from typing import Dict, Optional, Tuple, List, Union
 
 class LLMTaskSession:
     """Per-task session to accumulate interactions and trigger training if allowed."""
-    def __init__(self, task_id: str):
+    def __init__(self, task_id: str, status: str = "attached"):
         self.task_id = task_id
+        self.status = status
         self.trajectory = []
 
     def store(self, obs, action, reward, done, value, logprob):
@@ -66,6 +67,10 @@ class PPOAgentServer:
         """Optionally remove a task to free memory."""
         if task_id in self.sessions:
             del self.sessions[task_id]
+
+    def check_task(self, task_id: str):
+        """Check if a task is valid."""
+        return task_id in self.sessions
 
     def save(self, *args, **kwargs):
         """Allow saving of the agent model if needed."""

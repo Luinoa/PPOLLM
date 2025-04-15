@@ -39,20 +39,18 @@ agent = LLMAgent(normalization_mode="word", batch_size=2, inference=True)
 ppo_agent = PPOAgentServer(agent=agent)
 
 # In-memory task states
-TASK_STATE = {}
 app = FastAPI()
 
 @app.post("/attach")
 async def attach_task():
     task_id = ppo_agent.new_task()
-    TASK_STATE[task_id] = {"status": "attached", "task_id": task_id}
     return {"status": "attached", "task_id": task_id}
 
 
 @app.post("/detach")
 async def detach_task(task_id: str):
-    if task_id in TASK_STATE:
-        del TASK_STATE[task_id]
+    if ppo_agent.check_task(task_id):
+        ppo_agent.close_task(task_id)
         return {"status": "detached", "task_id": task_id}
     else:
         return {"error": "Task ID not found"}
@@ -63,7 +61,7 @@ async def step(req: StepRequest):
     task_id = req.task_id
     obs = req.observation
 
-    if task_id not in TASK_STATE:
+    if not ppo_agent.check_task(task_id):
         return {"error": "Invalid task ID"}
 
     response = ppo_agent.step(task_id, obs)
@@ -75,14 +73,6 @@ def generate_text(request: GenerationRequest):
     task_id = request.task_id
     # Placeholder logic for generation (simulate response)
     response = f"[Mock] Generated response to: {request.prompt}"
-    logprob = torch.tensor([0.0])
-    value = torch.tensor([0.5])
-
-    # Store the generated response in the task state
-    if task_id in TASK_STATE:
-        TASK_STATE[task_id]["response"] = response
-        TASK_STATE[task_id]["logprob"] = logprob
-        TASK_STATE[task_id]["value"] = value
 
     return {"task_id": task_id, "response": response}
 
@@ -93,7 +83,7 @@ async def feedback(req: FeedbackRequest):
     reward = req.reward
     done = req.done
 
-    if task_id not in TASK_STATE:
+    if not ppo_agent.check_task(task_id):
         return {"error": "Missing task state"}
 
     # Process feedback
