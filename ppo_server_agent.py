@@ -12,6 +12,8 @@ class LLMTaskSession:
         self.task_id = task_id
         self.status = status
         self.trajectory = []
+        self.total_steps = 0
+        self.pending = None
 
     def store(self, obs, action, reward, done, value, logprob):
         self.trajectory.append({
@@ -22,6 +24,7 @@ class LLMTaskSession:
             "value": value,
             "logprob": logprob
         })
+        self.total_steps += 1
 
 
 class PPOAgentServer:
@@ -55,18 +58,45 @@ class PPOAgentServer:
 
         # Get action, logprob, and value estimate
         with torch.no_grad():
-            action, logprob, _, value = self.agent.get_action_and_value([obs], return_value=False)
-        if self.inference:
+            if self.inference:
+                action, logprob, _, value = self.agent.get_action_and_value([obs], return_value=False)
+            else:
+                action, logprob, _, value = self.agent.get_action_and_value([obs], return_value=True)
             self.agent.clean()
         action_sampled = action.cpu().numpy()[0]
 
         # TODO: Store transition for tracking purposes
-        """
-        if not self.inference
-            session.store()
-        """
-
+        if not self.inference:
+            session.pending = ({
+                "obs" : obs,
+                "action": action,
+                "logprob": logprob,
+                "value": value
+            })
+            session.status = "pending" # Maybe useless?
         return action_sampled
+
+    def feedback(
+            self, task_id:str, reward: float, done: bool, next_obs: Optional[Union[str, List[str]]] = None
+    ):
+        """
+        Provide feedback to the agent. If done, the task is closed.
+        """
+        if task_id not in self.sessions:
+            raise ValueError(f"Unknown task_id {task_id}. Call new_task() first.")
+
+        session = self.sessions[task_id]
+
+        # Store feedback
+        if session.pending:
+            obs = session.pending["obs"]
+            action = session.pending["action"]
+            logprob = session.pending["logprob"]
+            value = session.pending["value"]
+            session.store(obs, action, reward, done, value, logprob)
+            session.pending = None
+        else:
+            raise ValueError(f"Pending feedback not found for task_id {task_id}.")
 
     def close_task(self, task_id: str):
         """Optionally remove a task to free memory."""

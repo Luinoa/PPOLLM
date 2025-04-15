@@ -4,7 +4,6 @@ import uuid
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-import torch
 import uvicorn
 from typing import Dict, Any
 
