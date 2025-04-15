@@ -1,99 +1,90 @@
-# api_server.py
-from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile
+# ppo_server.py
+# PPO + LangChain agent server for multi-task asynchronous interaction
+
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from typing import List, Dict
+import torch
 import uvicorn
-import logging
+from typing import Dict, Any
 
-# Import your LLMAgent class (which is assumed to provide generate_text and get_action_and_value methods)
-from llm_policy import LLMAgent
 
-app = FastAPI(title="LLM API for Kea")
+# Simulated PPO agent with get_action_and_value()
+class DummyAgent:
+    def get_action_and_value(self, obs):
+        # Simulate a policy by returning a dummy action and value
+        action = torch.tensor([0])  # Dummy action
+        value = torch.tensor([0.5])  # Dummy value
+        return action, torch.tensor([0.0]), None, value
 
-# Instantiate your agent (adjust parameters as needed)
-agent = LLMAgent(normalization_mode="word", load_8bit=False, batch_size=2)
-# Set the model to evaluation mode for inference
-agent.actor.eval()
-agent.critic.eval()
+    def store_transition(self, task_id, obs, action, reward, done, value):
+        # Buffer logic placeholder
+        print(f"[BUFFER] Stored transition for {task_id} | R: {reward}, D: {done}")
 
-# Define a Pydantic model for the generate_text API request
-class GenerateTextRequest(BaseModel):
-    prompt: str
-    max_new_tokens: int = 30
-    temperature: float = 1.0
-    top_p: float = 0.9
-    do_sample: bool = True
+    def maybe_train(self, task_id):
+        # Placeholder for training trigger
+        print(f"[TRAIN] Check if training needed for {task_id}")
 
-# Define the response model for the generate_text endpoint
-class GenerateTextResponse(BaseModel):
-    generated_text: str
 
-# Request and response schemas
-class SingleObservation(BaseModel):
-    prompt: str
-    action: List[str]
-    source: str  # Used to route to different models
+# Define request models
+class StepRequest(BaseModel):
+    task_id: str
+    observation: Dict[str, Any]
 
-class ActionRequest(BaseModel):
-    text_obs: SingleObservation
 
-class ActionResponse(BaseModel):
-    action: List[int]
+class FeedbackRequest(BaseModel):
+    task_id: str
+    reward: float
+    done: bool
 
-# Define the response model for the action and value endpoint.
-class ActionAndValueResponse(BaseModel):
-    action: list         # The chosen action (e.g., index or action string)
-    log_probs: list      # The log probabilities for the chosen actions
-    entropy: list        # The entropy of the action distributions
-    value: list          # The estimated state values
 
-@app.post("/generate_text", response_model=GenerateTextResponse)
-def generate_text_endpoint(request: GenerateTextRequest):
-    """
-    Endpoint to generate text based on the prompt.
-    This calls the agent.generate_text() function.
-    """
-    try:
-        generated_text = agent.generate_text(
-            request.prompt,
-            max_new_tokens=request.max_new_tokens,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            do_sample=request.do_sample
-        )
-        return GenerateTextResponse(generated_text=generated_text)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+app = FastAPI()
+agent = DummyAgent()
 
-@app.post("/get_action", response_model=ActionResponse)
-def get_action_only(request: ActionRequest):
-    """
-    Return only action from model; log other outputs like log_probs and value.
-    """
-    try:
-        # Prepare input for batch model API
-        text_obs_batch = [{
-            "prompt": request.text_obs.prompt,
-            "action": request.text_obs.action
-        }]
+# In-memory task states
+TASK_STATE = {}
 
-        # Call the model
-        action, log_probs, entropy, value = agent.get_action_and_value(
-            text_obs_batch, return_value=True
-        )
 
-        # Logging (or store to DB, file, etc.)
-        logging.info(f"Log probs: {log_probs.tolist()}")
-        logging.info(f"Entropy: {entropy.tolist()}")
-        if value is not None:
-            logging.info(f"Value: {value.tolist()}")
+@app.post("/step")
+async def step(req: StepRequest):
+    task_id = req.task_id
+    obs = req.observation
 
-        # Return only action to client
-        return ActionResponse(action=action.tolist())
+    # Convert obs to tensor if needed
+    obs_tensor = torch.tensor([obs["state"]])
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    action, logprob, _, value = agent.get_action_and_value(obs_tensor)
+
+    # Cache current obs and value for future feedback
+    TASK_STATE[task_id] = {
+        "obs": obs_tensor,
+        "action": action,
+        "value": value
+    }
+
+    return {"action": action.item(), "value": value.item()}
+
+
+@app.post("/feedback")
+async def feedback(req: FeedbackRequest):
+    task_id = req.task_id
+    reward = req.reward
+    done = req.done
+
+    if task_id not in TASK_STATE:
+        return {"error": "Missing task state"}
+
+    # Retrieve stored obs, action, value
+    state = TASK_STATE[task_id]
+    obs = state["obs"]
+    action = state["action"]
+    value = state["value"]
+
+    # Store experience and maybe train
+    agent.store_transition(task_id, obs, action, reward, done, value)
+    agent.maybe_train(task_id)
+
+    return {"status": "ok"}
+
 
 if __name__ == "__main__":
-    # Run the API service using Uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
