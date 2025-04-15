@@ -43,6 +43,9 @@ class GenerationRequest(BaseModel):
     top_p: float = 0.9
     do_sample: bool = True
 
+class PlainTextResponse:
+    text: str
+
 app = FastAPI()
 agent = DummyAgent()
 
