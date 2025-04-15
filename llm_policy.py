@@ -254,26 +254,6 @@ class LLMAgent(nn.Module):
         else:
             return action, log_probs, entroy, None
 
-    # Normally generate texts
-    def generate_text(self, prompt, max_new_tokens=30, temperature=1.0, top_p=0.9, do_sample=True):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-        # Generate text using the model's generate method
-        with torch.no_grad():
-            outputs = self.actor.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=do_sample,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
-
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        return generated_text
-
     def clean(self):
         torch.cuda.empty_cache()
 
