@@ -19,63 +19,73 @@ class PPOTrainer:
             lr=args.value_learning_rate, eps=1e-5
         )
 
-    def update(self, experiences, global_step, is_warmup):
-        args = self.args  # shorthand
-        # Unpack experiences: obs, actions, logprobs, rewards, dones, values, next_obs, next_done
-        obs = experiences['obs']
-        actions = experiences['actions']
-        logprobs = experiences['logprobs']
-        rewards = experiences['rewards']
-        dones = experiences['dones']
-        values = experiences['values']
-        num_steps, num_envs = rewards.shape
+    def update(self, experience_list, global_step, is_warmup):
+        """
+        experience_list: list of dictionaries, each from a separate task.
+                         Each dict contains obs, actions, logprobs, rewards, dones, values
+        """
+        args = self.args
+        all_obs, all_actions, all_logprobs, all_rewards = [], [], [], []
+        all_dones, all_values, all_returns, all_advantages = [], [], [], []
 
-        # Compute bootstrap value and advantages
-        with torch.no_grad():
-            next_obs = experiences['next_obs']
-            next_done = experiences['next_done']
-            next_value = self.agent.get_value(next_obs).reshape(1, -1)
-            advantages = torch.zeros_like(rewards, device=self.device)
-            lastgaelam = 0
-            for t in reversed(range(num_steps)):
-                if t == num_steps - 1:
-                    nextnonterminal = 1.0 - next_done
-                    nextvalues = next_value
-                else:
-                    nextnonterminal = 1.0 - dones[t + 1]
-                    nextvalues = values[t + 1]
-                delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
-                lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
-                advantages[t] = lastgaelam
-            returns = advantages + values
+        for exp in experience_list:
+            obs = exp['obs']  # [T, ...]
+            actions = exp['actions']
+            logprobs = exp['logprobs']
+            rewards = exp['rewards']
+            dones = exp['dones']
+            values = exp['values']
+            next_obs = exp['next_obs']
+            next_done = exp['next_done']
 
-        # Flatten the batch
-        batch_size = args.num_envs * num_steps
-        b_obs = obs.reshape((batch_size,) + obs.shape[2:])
-        b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((batch_size,) + actions.shape[2:])
-        b_advantages = advantages.reshape(-1)
-        b_returns = returns.reshape(-1)
-        b_values = values.reshape(-1)
+            with torch.no_grad():
+                next_value = self.agent.get_value(next_obs).reshape(1)
+                T = rewards.shape[0]
+                advantages = torch.zeros_like(rewards, device=self.device)
+                lastgaelam = 0
+                for t in reversed(range(T)):
+                    if t == T - 1:
+                        nextnonterminal = 1.0 - next_done
+                        nextvalues = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        nextvalues = values[t + 1]
+                    delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
+                    lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                    advantages[t] = lastgaelam
+                returns = advantages + values
 
-        b_inds = np.arange(args.batch_size)
-        clipfracs = []
-        kl_explode = False
-        policy_update_steps = 0
-        total_approx_kl = torch.tensor(0.0, device=self.device)
+            all_obs.append(obs)
+            all_actions.append(actions)
+            all_logprobs.append(logprobs)
+            all_rewards.append(rewards)
+            all_dones.append(dones)
+            all_values.append(values)
+            all_returns.append(returns)
+            all_advantages.append(advantages)
 
-        # ----- Value Network Update -----
+        # Flatten across all experience segments (i.e., list of variable-length tensors)
+        b_obs = torch.cat(all_obs, dim=0)
+        b_actions = torch.cat(all_actions, dim=0)
+        b_logprobs = torch.cat(all_logprobs, dim=0)
+        b_values = torch.cat(all_values, dim=0)
+        b_returns = torch.cat(all_returns, dim=0)
+        b_advantages = torch.cat(all_advantages, dim=0)
+
+        # Shuffle for batching
+        batch_size = b_obs.shape[0]
+        b_inds = np.arange(batch_size)
         np.random.shuffle(b_inds)
-        for start in range(0, args.batch_size, args.value_minibatch_size):
+
+        # Value Update
+        for start in range(0, batch_size, args.value_minibatch_size):
             end = start + args.value_minibatch_size
             mb_inds = b_inds[start:end]
             newvalue = self.agent.get_value(b_obs[mb_inds]).view(-1)
             if args.clip_vloss:
                 v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                 v_clipped = b_values[mb_inds] + torch.clamp(
-                    newvalue - b_values[mb_inds],
-                    -args.clip_coef,
-                    args.clip_coef
+                    newvalue - b_values[mb_inds], -args.clip_coef, args.clip_coef
                 )
                 v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
                 v_loss = 0.5 * torch.max(v_loss_unclipped, v_loss_clipped).mean()
@@ -88,22 +98,21 @@ class PPOTrainer:
             nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
             self.value_optimizer.step()
 
-        # Skip policy updates if still in warm-up
         if is_warmup:
             return {"value_loss": v_loss.item(), "policy_loss": 0.0, "approx_kl": 0.0}
 
-        # ----- Policy Network Update -----
+        # Policy Update
+        total_approx_kl = torch.tensor(0.0, device=self.device)
+        pg_loss = entropy_loss = old_approx_kl = torch.tensor(0.0, device=self.device)
+        clipfracs = []
+        policy_update_steps = 0
+
         self.policy_optimizer.zero_grad()
-        for start in range(0, args.batch_size, args.policy_minibatch_size):
-            # Handle gradient checkpointing (accumulate gradients)
-            if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                total_approx_kl = torch.tensor(0.0, device=self.device)
-            policy_update_steps += 1
+        for start in range(0, batch_size, args.policy_minibatch_size):
             end = start + args.policy_minibatch_size
             mb_inds = b_inds[start:end]
-            # Pass is_warmup flag to agent.get_action_and_value as needed.
             _, newlogprob, entropy, _ = self.agent.get_action_and_value(
-                b_obs[mb_inds], b_actions.long()[mb_inds], is_warmup, return_value=False
+                b_obs[mb_inds], b_actions[mb_inds], is_warmup, return_value=False
             )
             logratio = newlogprob - b_logprobs[mb_inds]
             ratio = logratio.exp()
@@ -111,7 +120,7 @@ class PPOTrainer:
             with torch.no_grad():
                 old_approx_kl = (-logratio).mean()
                 approx_kl = ((ratio - 1) - logratio).mean()
-                total_approx_kl += approx_kl / args.gradient_checkpointing_steps
+                total_approx_kl += approx_kl
                 clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
 
             mb_advantages = b_advantages[mb_inds]
@@ -124,28 +133,25 @@ class PPOTrainer:
             entropy_loss = entropy.mean()
             loss = pg_loss - args.ent_coef * entropy_loss
             loss /= args.gradient_checkpointing_steps
-
             loss.backward()
 
+            policy_update_steps += 1
             if policy_update_steps % args.gradient_checkpointing_steps == 0:
                 if args.target_kl is not None and total_approx_kl > args.target_kl:
                     self.policy_optimizer.zero_grad()
-                    kl_explode = True
-                    policy_update_steps -= args.gradient_checkpointing_steps
                     break
-
                 nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                 self.policy_optimizer.step()
                 self.policy_optimizer.zero_grad()
 
-        # Logging metrics
+        # Logging
         self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         self.writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
         self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
         self.writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        self.writer.add_scalar("losses/total_approx_kl", total_approx_kl.item(), global_step)
-        self.writer.add_scalar("losses/policy_update_times", policy_update_steps // args.gradient_checkpointing_steps, global_step)
+        self.writer.add_scalar("losses/policy_update_times", policy_update_steps // args.gradient_checkpointing_steps,
+                               global_step)
         self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
 
         return {"value_loss": v_loss.item(), "policy_loss": pg_loss.item(), "approx_kl": approx_kl.item()}

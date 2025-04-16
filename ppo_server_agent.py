@@ -1,19 +1,19 @@
 # ppo_server_agent.py
 import torch
 import uuid
+import threading
 from typing import Dict, Optional, Tuple, List, Union
-
-from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
 
 
 class LLMTaskSession:
     """Per-task session to accumulate interactions and trigger training if allowed."""
     def __init__(self, task_id: str, status: str = "attached"):
         self.task_id = task_id
-        self.status = status
+        self.status = status # May be useless
         self.trajectory = []
         self.total_steps = 0
         self.pending = None
+        self.lock = threading.Lock()
 
     def store(self, obs, action, reward, done, value, logprob):
         self.trajectory.append({
@@ -22,9 +22,49 @@ class LLMTaskSession:
             "reward": reward,
             "done": done,
             "value": value,
-            "logprob": logprob
+            "logprob": logprob,
         })
         self.total_steps += 1
+        if done:
+            self.status = "done"
+
+
+    def get_experience(self):
+        """
+        Prepare experience data for PPO training.
+        Discard the final reward, keep the last transition's obs/done for next update.
+        """
+        # Do not include the last transition when computing rewards/returns
+        obs = torch.stack([x["obs"] for x in self.trajectory[:-1]])
+        actions = torch.stack([x["action"] for x in self.trajectory[:-1]])
+        rewards = torch.stack([x["reward"] for x in self.trajectory[:-1]])
+        dones = torch.stack([x["done"] for x in self.trajectory[:-1]])
+        values = torch.stack([x["value"] for x in self.trajectory[:-1]])
+        logprobs = torch.stack([x["logprob"] for x in self.trajectory[:-1]])
+
+        # Keep the final transition to serve as the seed for the next round
+        last = self.trajectory[-1]
+
+        return {
+            "obs": obs,
+            "actions": actions,
+            "rewards": rewards,
+            "dones": dones,
+            "values": values,
+            "logprobs": logprobs,
+            "next_obs": last["obs"],
+            "next_done": last["done"],
+        }
+
+    def reset(self):
+        """Reset the session while preserving the last transition as the new start."""
+        if len(self.trajectory) > 0:
+            # Keep the last step to continue from
+            self.trajectory = [self.trajectory[-1]]
+        else:
+            self.trajectory = []
+        self.total_steps = len(self.trajectory)
+        self.status = "attached"
 
 
 class PPOAgentServer:
@@ -38,6 +78,7 @@ class PPOAgentServer:
         self.trainer = trainer
         self.inference = inference
         self.sessions: Dict[str, LLMTaskSession] = {}
+        self.lock = threading.Lock()
 
     def new_task(self) -> str:
         """Start a new task session."""
@@ -65,15 +106,13 @@ class PPOAgentServer:
             self.agent.clean()
         action_sampled = action.cpu().numpy()[0]
 
-        # TODO: Store transition for tracking purposes
-        if not self.inference:
-            session.pending = ({
-                "obs" : obs,
-                "action": action,
-                "logprob": logprob,
-                "value": value
-            })
-            session.status = "pending" # Maybe useless?
+        session.pending = ({
+            "obs" : obs,
+            "action": action,
+            "logprob": logprob,
+            "value": value
+        })
+        session.status = "pending" # Maybe useless?
         return action_sampled
 
     def feedback(
@@ -88,15 +127,27 @@ class PPOAgentServer:
         session = self.sessions[task_id]
 
         # Store feedback
-        if session.pending:
+        if session.pending is not None:
             obs = session.pending["obs"]
             action = session.pending["action"]
             logprob = session.pending["logprob"]
             value = session.pending["value"]
-            session.store(obs, action, reward, done, value, logprob)
+            if not self.inference:
+                session.store(obs, action, reward, done, value, logprob)
             session.pending = None
+            session.status = "attached" # Maybe useless?
         else:
             raise ValueError(f"Pending feedback not found for task_id {task_id}.")
+
+    def _gather_experiences_locked(self):
+        """Collect and reset all 'done' sessions (MUST BE CALLED WITH LOCK HELD)."""
+        all_experiences = []
+        for task_id, session in list(self.sessions.items()):
+            if session.total_steps > 1:
+                exp = session.get_experience()
+                all_experiences.append(exp)
+                session.reset()
+        return all_experiences
 
     def close_task(self, task_id: str):
         """Optionally remove a task to free memory."""

@@ -17,7 +17,6 @@ class StepRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     task_id: str
-    next_obs: Dict[str, Any]
     reward: float
     done: bool
 
@@ -86,7 +85,7 @@ async def feedback(req: FeedbackRequest):
         return {"error": "Missing task state"}
 
     # Process feedback
-    ppo_agent.provide_feedback(task_id, reward, done)
+    ppo_agent.feedback(task_id, reward, done)
 
     return {"status": "ok"}
 
