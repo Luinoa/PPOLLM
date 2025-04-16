@@ -78,7 +78,10 @@ class PPOTrainer:
         np.random.shuffle(b_inds)
 
         # Value Update
+        kl_explode = False
         for start in range(0, batch_size, args.value_minibatch_size):
+            if kl_explode:
+                break
             end = start + args.value_minibatch_size
             mb_inds = b_inds[start:end]
             newvalue = self.agent.get_value(b_obs[mb_inds]).view(-1)
@@ -107,7 +110,6 @@ class PPOTrainer:
         pg_loss = entropy_loss = old_approx_kl = torch.tensor(0.0, device=self.device)
         clipfracs = []
         policy_update_steps = 0
-        kl_explode = False
 
         for start in range(0, batch_size, args.policy_minibatch_size):
             end = start + args.policy_minibatch_size
