@@ -11,6 +11,12 @@ from peft import (
 )
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, TaskType
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_ollama import OllamaEmbeddings
+from langchain_core.tools import tool
+from langchain_core.documents import Document
+from langchain_chroma import Chroma
 
 import os
 import torch.nn as nn
@@ -41,6 +47,7 @@ class LLMAgent(nn.Module):
         self.lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
         self.batch_size = batch_size
+        self.store = {}
 
         assert (
             self.base_model
@@ -65,6 +72,7 @@ class LLMAgent(nn.Module):
         )
 
         self.llm = self._init_llm()
+        self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.inference = inference
         if load_path:
             self.load(load_path)
@@ -74,6 +82,10 @@ class LLMAgent(nn.Module):
                 self.critic = self._init_critic().to(self.device)
         if inference:
             self.actor.eval()
+        
+        docs = [Document(page_content="ui testing")]
+        self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
+        retriever = self.vector_store.as_retriever()
 
     def _init_llm(self):
         model = AutoModelForCausalLM.from_pretrained(
@@ -145,6 +157,23 @@ class LLMAgent(nn.Module):
         # save critic
         torch.save(self.critic.v_head.state_dict(), os.path.join(exp_path, "critic.pth"))
 
+    @tool(response_format="content_and_artifact")
+    def retrieve(self, query: str):
+        """
+        Retrieve information related to a query.
+        """
+        retrieved_docs = self.vector_store.similarity_search(query, k=2)
+        serialized = "\n\n".join(
+            f"Source: {doc.metadata}\n" f"Content: {doc.page_content}"
+            for doc in retrieved_docs
+        )
+        return serialized, retrieved_docs
+    
+    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        if session_id not in self.store:
+            self.store[session_id] = ChatMessageHistory()
+        return self.store[session_id]
+    
     def load(self, exp_path):
         print("load model")
         lora_weights = exp_path
