@@ -102,25 +102,33 @@ class PPOTrainer:
             return {"value_loss": v_loss.item(), "policy_loss": 0.0, "approx_kl": 0.0}
 
         # Policy Update
+        self.policy_optimizer.zero_grad()
         total_approx_kl = torch.tensor(0.0, device=self.device)
         pg_loss = entropy_loss = old_approx_kl = torch.tensor(0.0, device=self.device)
         clipfracs = []
         policy_update_steps = 0
+        kl_explode = False
 
-        self.policy_optimizer.zero_grad()
         for start in range(0, batch_size, args.policy_minibatch_size):
             end = start + args.policy_minibatch_size
             mb_inds = b_inds[start:end]
+
+            # Gradient accumulation
+            if policy_update_steps % args.gradient_checkpointing_steps == 0:
+                total_approx_kl = torch.tensor(0.0, device=self.device)
+
+            # Get action values
             _, newlogprob, entropy, _ = self.agent.get_action_and_value(
                 b_obs[mb_inds], b_actions[mb_inds], is_warmup, return_value=False
             )
+
             logratio = newlogprob - b_logprobs[mb_inds]
             ratio = logratio.exp()
 
             with torch.no_grad():
                 old_approx_kl = (-logratio).mean()
                 approx_kl = ((ratio - 1) - logratio).mean()
-                total_approx_kl += approx_kl
+                total_approx_kl += approx_kl / args.gradient_checkpointing_steps
                 clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
 
             mb_advantages = b_advantages[mb_inds]
@@ -132,14 +140,18 @@ class PPOTrainer:
             pg_loss = torch.max(pg_loss1, pg_loss2).mean()
             entropy_loss = entropy.mean()
             loss = pg_loss - args.ent_coef * entropy_loss
-            loss /= args.gradient_checkpointing_steps
+            loss /= args.gradient_checkpointing_steps  # normalize for accumulation
+
             loss.backward()
 
             policy_update_steps += 1
             if policy_update_steps % args.gradient_checkpointing_steps == 0:
                 if args.target_kl is not None and total_approx_kl > args.target_kl:
                     self.policy_optimizer.zero_grad()
-                    break
+                    kl_explode = True
+                    policy_update_steps -= args.gradient_checkpointing_steps
+                    break  # early stopping
+
                 nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                 self.policy_optimizer.step()
                 self.policy_optimizer.zero_grad()
