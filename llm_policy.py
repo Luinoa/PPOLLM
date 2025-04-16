@@ -72,6 +72,7 @@ class LLMAgent(nn.Module):
         )
 
         self.llm = self._init_llm()
+        # maybe we can change embedding model?
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.inference = inference
         if load_path:
@@ -83,6 +84,7 @@ class LLMAgent(nn.Module):
         if inference:
             self.actor.eval()
         
+        # need to find some useful documents for ui testing
         docs = [Document(page_content="ui testing")]
         self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
         retriever = self.vector_store.as_retriever()
