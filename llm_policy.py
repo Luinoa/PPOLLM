@@ -171,10 +171,12 @@ class LLMAgent(nn.Module):
         )
         return serialized, retrieved_docs
     
+    """
     def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
         if session_id not in self.store:
             self.store[session_id] = ChatMessageHistory()
         return self.store[session_id]
+    """
     
     def load(self, exp_path):
         print("load model")
