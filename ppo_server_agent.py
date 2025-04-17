@@ -77,6 +77,7 @@ class PPOAgentServer:
         :param trainer: PPOTrainer instance to perform updates (can be None for pure inference)
         :param inference_only: If True, disables training logic
         """
+        self.args = args
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
@@ -132,12 +133,12 @@ class PPOAgentServer:
         if task_id not in self.sessions:
             raise ValueError(f"Unknown task_id {task_id}. Call new_task() first.")
 
-        if self.get_total_ask_trajectory_size() > self.agent.batch_size:
+        if self.get_total_ask_trajectory_size() > self.args.training_batch or self.lock.locked():
             return False
         else:
             session = self.sessions[task_id]
             with self.lock:
-                if self.get_total_ask_trajectory_size() > self.agent.batch_size:
+                if self.get_total_ask_trajectory_size() > self.args.training_batch:
                     return False
                 else:
                     session.status = "pending"
@@ -188,10 +189,19 @@ class PPOAgentServer:
             action = session.pending["action"]
             logprob = session.pending["logprob"]
             value = session.pending["value"]
-            if not self.inference:
-                session.store(obs, action, reward, done, value, logprob)
-            session.pending = None
-            session.status = "attached"
+            with self.lock:
+                if not self.inference:
+                    session.store(obs, action, reward, done, value, logprob)
+                session.pending = None
+                session.status = "attached"
+
+                if self.get_total_trajectory_size() >= self.args.training_batch:
+                    # Gather experiences from all sessions
+                    experiences = self.gather_experiences()
+                    # Perform PPO update
+                    if not self.inference:
+                        self.trainer.update(experiences)
+                        self.writer.flush()
         else:
             raise ValueError(f"Pending feedback not found for task_id {task_id}.")
 
