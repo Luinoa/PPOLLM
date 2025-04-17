@@ -38,11 +38,11 @@ class LLMTaskSession:
         Discard the final reward, keep the last transition's obs/done for next update.
         """
         # Do not include the last transition when computing rewards/returns
-        obs = torch.stack([x["obs"] for x in self.trajectory[:-1]])
-        actions = torch.stack([x["action"] for x in self.trajectory[:-1]])
-        rewards = torch.stack([x["reward"] for x in self.trajectory[:-1]])
-        dones = torch.stack([x["done"] for x in self.trajectory[:-1]])
-        values = torch.stack([x["value"] for x in self.trajectory[:-1]])
+        obs = [x["obs"] for x in self.trajectory[:-1]]
+        actions = torch.tensor([x["action"] for x in self.trajectory[:-1]])
+        rewards = torch.tensor([x["reward"] for x in self.trajectory[:-1]])
+        dones = torch.tensor([1.0 if x["done"] == True else 0.0 for x in self.trajectory[:-1]])
+        values = torch.tensor([x["value"] if x["value"] is not None else 0.0 for x in self.trajectory[:-1]])
         logprobs = torch.stack([x["logprob"] for x in self.trajectory[:-1]])
 
         # Keep the final transition to serve as the seed for the next round
@@ -56,7 +56,7 @@ class LLMTaskSession:
             "values": values,
             "logprobs": logprobs,
             "next_obs": last["obs"],
-            "next_done": last["done"],
+            "next_done": torch.tensor(1.0 if last["done"] == True else 0.0),
         }
 
     def reset(self):
@@ -101,11 +101,10 @@ class PPOAgentServer:
         If the trajectory is empty, its size is 0.
         """
         total_size = 0
-        with self.lock:
-            for session in self.sessions.values():
-                traj_len = len(session.trajectory)
-                if traj_len > 0:
-                    total_size += traj_len - 1
+        for session in self.sessions.values():
+            traj_len = len(session.trajectory)
+            if traj_len > 0:
+                total_size += traj_len - 1
         return total_size
 
     def get_total_ask_trajectory_size(self) -> int:
@@ -115,33 +114,27 @@ class PPOAgentServer:
         The size of each trajectory is defined as (effective length - 1), and is 0 if effective length is 0.
         """
         total_size = 0
-        with self.lock:
-            for session in self.sessions.values():
-                effective_len = len(session.trajectory)
-                if session.status == "pending":
-                    effective_len += 1
-                if effective_len > 0:
-                    total_size += effective_len - 1
+        for session in self.sessions.values():
+            effective_len = len(session.trajectory)
+            if session.status == "pending":
+                effective_len += 1
+            if effective_len > 0:
+                total_size += effective_len - 1
         return total_size
 
     def ask_for_step(self, task_id: str) -> bool:
         """
         Check if the agent is ready to take a step for the given task_id.
-        :param task_id:
-        :return:
         """
         if task_id not in self.sessions:
             raise ValueError(f"Unknown task_id {task_id}. Call new_task() first.")
 
-        if self.get_total_ask_trajectory_size() > self.args.training_batch or self.lock.locked():
-            return False
-        else:
+        with self.lock:
+            if self.get_total_ask_trajectory_size() > len(self.sessions) * self.args.training_batch:
+                return False
+
             session = self.sessions[task_id]
-            with self.lock:
-                if self.get_total_ask_trajectory_size() > self.args.training_batch:
-                    return False
-                else:
-                    session.status = "pending"
+            session.status = "pending"
             return True
 
     def step(
@@ -190,14 +183,14 @@ class PPOAgentServer:
             logprob = session.pending["logprob"]
             value = session.pending["value"]
             with self.lock:
-                if not self.inference:
-                    session.store(obs, action, reward, done, value, logprob)
+                session.store(obs, action, reward, done, value, logprob)
                 session.pending = None
                 session.status = "attached"
 
-                if self.get_total_trajectory_size() >= self.args.training_batch:
+                if self.get_total_trajectory_size() >= len(self.sessions) * self.args.training_batch:
                     # Gather experiences from all sessions
                     experiences = self.gather_experiences()
+                    print('signal')
                     # Perform PPO update
                     if not self.inference:
                         self.trainer.update(experiences)
@@ -218,7 +211,8 @@ class PPOAgentServer:
     def close_task(self, task_id: str):
         """Optionally remove a task to free memory."""
         if task_id in self.sessions:
-            del self.sessions[task_id]
+            with self.lock:
+                del self.sessions[task_id]
 
     def check_task(self, task_id: str):
         """Check if a task is valid."""

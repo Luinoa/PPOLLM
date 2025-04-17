@@ -69,7 +69,7 @@ class PPOTrainer:
             all_advantages.append(advantages)
 
         # Flatten across all experience segments (i.e., list of variable-length tensors)
-        b_obs = torch.cat(all_obs, dim=0)
+        b_obs = all_obs # Dicts here, different from original codes.
         b_actions = torch.cat(all_actions, dim=0)
         b_logprobs = torch.cat(all_logprobs, dim=0)
         b_values = torch.cat(all_values, dim=0)

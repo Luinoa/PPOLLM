@@ -52,13 +52,13 @@ async def detach_task(task_id: str):
         return {"error": "Task ID not found"}
 
 @app.post("/ask")
-async def ask_for_step(task_id: str, obs: Dict[str, Any]):
+async def ask_for_step(task_id: str):
     if not ppo_agent.check_task(task_id):
         return {"error": "Invalid task ID"}
     if ppo_agent.ask_for_step(task_id):
         return {"status": "ok"}
     else:
-        return {"status": "Task not ready for step"}
+        return {"error": "This cannot happen"}
 
 @app.post("/step")
 async def step(req: StepRequest):
@@ -111,8 +111,12 @@ if __name__ == "__main__":
                         help="the number of parallel game environments")
     parser.add_argument("--num-steps", type=int, default=32,
                         help="the number of steps to run in each environment per policy rollout")
-    parser.add_argument("--anneal-lr", action="store_true", default=True, nargs="?", const=True,
-                        help="Toggle learning rate annealing for policy and value networks")
+
+    parser.add_argument("--anneal-lr", dest="anneal_lr", action="store_true", help="Enable learning rate annealing")
+    parser.add_argument("--no-anneal-lr", dest="anneal_lr", action="store_false",
+                        help="Disable learning rate annealing")
+    parser.set_defaults(anneal_lr=True)
+
     parser.add_argument("--gamma", type=float, default=0.99,
                         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
@@ -121,15 +125,21 @@ if __name__ == "__main__":
                         help="the number of mini-batches")
     parser.add_argument("--value-minibatch-size", type=int, default=4,
                         help="the number of mini-batches")
-
     parser.add_argument("--update-epochs", type=int, default=1,
                         help="the K epochs to update the policy")
-    parser.add_argument("--norm-adv", action="store_true", default=True, nargs="?", const=True,
-                        help="Toggles advantages normalization")
+
+    parser.add_argument("--norm-adv", dest="norm_adv", action="store_true", help="Enable advantages normalization")
+    parser.add_argument("--no-norm-adv", dest="norm_adv", action="store_false", help="Disable advantages normalization")
+    parser.set_defaults(norm_adv=True)
+
     parser.add_argument("--clip-coef", type=float, default=0.2,
                         help="the surrogate clipping coefficient")
-    parser.add_argument("--clip-vloss", action="store_true", default=True, nargs="?", const=True,
-                        help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
+    parser.add_argument("--clip-vloss", dest="clip_vloss", action="store_true",
+                        help="Use a clipped loss for the value function (default: True)")
+    parser.add_argument("--no-clip-vloss", dest="clip_vloss", action="store_false",
+                        help="Do not use a clipped loss for the value function")
+    parser.set_defaults(clip_vloss=True)
+
     parser.add_argument("--ent-coef", type=float, default=0.01,
                         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
@@ -148,7 +158,7 @@ if __name__ == "__main__":
                         help='The path to save the tensorboard results')
 
     parser.add_argument('--training-batch', action='store', type=int, default=30,
-                        help='The size of training batches')
+                        help='The size of training batches per session')
 
     args = parser.parse_args()
 
