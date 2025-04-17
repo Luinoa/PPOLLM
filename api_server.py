@@ -6,8 +6,6 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import uvicorn
 from typing import Dict, Any
-
-from llm_policy import LLMAgent
 from ppo_server_agent import PPOAgentServer
 
 # Define request models
