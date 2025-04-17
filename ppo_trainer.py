@@ -4,11 +4,15 @@ import numpy as np
 import torch.nn as nn
 
 class PPOTrainer:
-    def __init__(self, agent, args, device, writer):
+    def __init__(self, agent, args, writer):
         self.agent = agent
         self.args = args
-        self.device = device
         self.writer = writer
+
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
 
         self.policy_optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, self.agent.actor.parameters()),
@@ -170,10 +174,10 @@ class PPOTrainer:
 
         return {"value_loss": v_loss.item(), "policy_loss": pg_loss.item(), "approx_kl": approx_kl.item()}
 
-    def reset_optimizers(self, args, update):
+    def reset_optimizers(self, args, update, batch_size):
         """ warm up the learning rate of the optimizers. """
-        num_updates = args.total_timesteps // args.batch_size
-        num_critic_warm_up_updates = args.critic_warm_up_steps // args.batch_size
+        num_updates = args.total_timesteps // batch_size
+        num_critic_warm_up_updates = args.critic_warm_up_steps // batch_size
         frac = 1.0 - (update - 1.0 - num_critic_warm_up_updates) / num_updates
         self.policy_optimizer.param_groups[0]["lr"] = frac * args.policy_learning_rate
         self.value_optimizer.param_groups[0]["lr"] = frac * args.value_learning_rate

@@ -3,6 +3,9 @@ import torch
 import uuid
 import threading
 from typing import Dict, Optional, Tuple, List, Union
+from ppo_trainer import PPOTrainer
+from llm_policy import LLMAgent
+from torch.utils.tensorboard import SummaryWriter
 
 
 class LLMTaskSession:
@@ -68,23 +71,77 @@ class LLMTaskSession:
 
 
 class PPOAgentServer:
-    def __init__(self, agent, trainer=None, inference= False):
+    def __init__(self, args):
         """
         :param agent: An instance of LLMAgent (implementing get_action_and_value, save, etc.)
         :param trainer: PPOTrainer instance to perform updates (can be None for pure inference)
         :param inference_only: If True, disables training logic
         """
-        self.agent = agent
-        self.trainer = trainer
-        self.inference = inference
+        self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
+
+        self.agent = LLMAgent(normalization_mode="word", batch_size=2, inference=args.inference)
+
+        if not self.inference:
+            self.writer = SummaryWriter(f"{args.record_path}")
+            self.trainer = PPOTrainer(self.agent, args, self.writer)
 
     def new_task(self) -> str:
         """Start a new task session."""
         task_id = str(uuid.uuid4())
         self.sessions[task_id] = LLMTaskSession(task_id)
         return task_id
+
+    def get_total_trajectory_size(self) -> int:
+        """
+        Computes the total trajectory size across all task sessions.
+        The size of each trajectory is defined as len(trajectory) - 1.
+        If the trajectory is empty, its size is 0.
+        """
+        total_size = 0
+        with self.lock:
+            for session in self.sessions.values():
+                traj_len = len(session.trajectory)
+                if traj_len > 0:
+                    total_size += traj_len - 1
+        return total_size
+
+    def get_total_ask_trajectory_size(self) -> int:
+        """
+        Computes the total ask_trajectory size across all task sessions.
+        If a session has non-None `status`, the effective trajectory length is len + 1.
+        The size of each trajectory is defined as (effective length - 1), and is 0 if effective length is 0.
+        """
+        total_size = 0
+        with self.lock:
+            for session in self.sessions.values():
+                effective_len = len(session.trajectory)
+                if session.status == "pending":
+                    effective_len += 1
+                if effective_len > 0:
+                    total_size += effective_len - 1
+        return total_size
+
+    def ask_for_step(self, task_id: str) -> bool:
+        """
+        Check if the agent is ready to take a step for the given task_id.
+        :param task_id:
+        :return:
+        """
+        if task_id not in self.sessions:
+            raise ValueError(f"Unknown task_id {task_id}. Call new_task() first.")
+
+        if self.get_total_ask_trajectory_size() > self.agent.batch_size:
+            return False
+        else:
+            session = self.sessions[task_id]
+            with self.lock:
+                if self.get_total_ask_trajectory_size() > self.agent.batch_size:
+                    return False
+                else:
+                    session.status = "pending"
+            return True
 
     def step(
             self, task_id: str, obs: Union[str, List[str]]
@@ -112,7 +169,6 @@ class PPOAgentServer:
             "logprob": logprob,
             "value": value
         })
-        session.status = "pending" # Maybe useless?
         return action_sampled
 
     def feedback(
@@ -135,12 +191,12 @@ class PPOAgentServer:
             if not self.inference:
                 session.store(obs, action, reward, done, value, logprob)
             session.pending = None
-            session.status = "attached" # Maybe useless?
+            session.status = "attached"
         else:
             raise ValueError(f"Pending feedback not found for task_id {task_id}.")
 
-    def _gather_experiences_locked(self):
-        """Collect and reset all 'done' sessions (MUST BE CALLED WITH LOCK HELD)."""
+    def gather_experiences(self):
+        """Collect and reset all 'done' sessions."""
         all_experiences = []
         for task_id, session in list(self.sessions.items()):
             if session.total_steps > 1:
