@@ -158,25 +158,6 @@ class LLMAgent(nn.Module):
         self.actor.save_pretrained(exp_path)
         # save critic
         torch.save(self.critic.v_head.state_dict(), os.path.join(exp_path, "critic.pth"))
-
-    @tool(response_format="content_and_artifact")
-    def retrieve(self, query: str):
-        """
-        Retrieve information related to a query.
-        """
-        retrieved_docs = self.vector_store.similarity_search(query, k=2)
-        serialized = "\n\n".join(
-            f"Source: {doc.metadata}\n" f"Content: {doc.page_content}"
-            for doc in retrieved_docs
-        )
-        return serialized, retrieved_docs
-    
-    """
-    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
-        if session_id not in self.store:
-            self.store[session_id] = ChatMessageHistory()
-        return self.store[session_id]
-    """
     
     def load(self, exp_path):
         print("load model")
