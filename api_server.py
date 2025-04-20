@@ -157,8 +157,11 @@ if __name__ == "__main__":
     parser.add_argument('--record-path', action='store', type=str, default="record",
                         help='The path to save the tensorboard results')
 
-    parser.add_argument('--training-batch', action='store', type=int, default=30,
+    parser.add_argument('--training-batch', action='store', type=int, default=32,
                         help='The size of training batches per session')
+
+    parser.add_argument('-p', '--port', action='store', type=int, default=8000,
+                        help="Port number for the server")
 
     args = parser.parse_args()
 
@@ -169,4 +172,4 @@ if __name__ == "__main__":
     else:
         print("[INFO] Running in training mode")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
