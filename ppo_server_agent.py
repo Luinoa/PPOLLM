@@ -93,7 +93,10 @@ class PPOAgentServer:
     def new_task(self) -> str:
         """Start a new task session."""
         task_id = str(uuid.uuid4())
-        self.sessions[task_id] = LLMTaskSession(task_id)
+        while task_id in self.sessions:
+            task_id = str(uuid.uuid4())
+        with self.lock:
+            self.sessions[task_id] = LLMTaskSession(task_id)
         return task_id
 
     def get_total_trajectory_size(self) -> int:
