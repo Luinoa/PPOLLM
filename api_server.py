@@ -97,24 +97,14 @@ async def feedback(req: FeedbackRequest):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--inference", dest="inference", action="store_true",
-                        help="Run in inference-only mode")
-    parser.add_argument("-t", "--training", dest="inference", action="store_false",
-                        help="Run in training mode")
-    parser.set_defaults(inference=True)
-
     # Algorithm specific arguments
     parser.add_argument("--policy-learning-rate", type=float, default=1e-6,
                         help="the learning rate of the optimizer")
     parser.add_argument("--value-learning-rate", type=float, default=3e-5,
                         help="the learning rate of the optimizer")
 
-    parser.add_argument("--num-envs", type=int, default=4,
-                        help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=32,
-                        help="the number of steps to run in each environment per policy rollout")
-
     """
+    # Not to consider this for now
     parser.add_argument("--anneal-lr", dest="anneal_lr", action="store_true", help="Enable learning rate annealing")
     parser.add_argument("--no-anneal-lr", dest="anneal_lr", action="store_false",
                         help="Disable learning rate annealing")
@@ -129,13 +119,6 @@ if __name__ == "__main__":
                         help="the number of mini-batches")
     parser.add_argument("--value-minibatch-size", type=int, default=4,
                         help="the number of mini-batches")
-
-    parser.add_argument('--training-batch', action='store', type=int, default=32,
-                        help='The size of training batches per session')
-    parser.add_argument("--update-epoches", type=int, default=1,
-                        help="the number of epochs to update the policy")
-    parser.add_argument("--warmup-updates", action="store", type=int, default=0,
-                        help="The number of warmup updates before training starts")
 
     parser.add_argument("--norm-adv", dest="norm_adv", action="store_true", help="Enable advantages normalization")
     parser.add_argument("--no-norm-adv", dest="norm_adv", action="store_false", help="Disable advantages normalization")
@@ -167,8 +150,21 @@ if __name__ == "__main__":
 
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
-    parser.add_argument('--inference-batch', action='store', type=int, default=2,
-                        help='The size of inference batches per session')
+    parser.add_argument('--forward-batch', action='store', type=int, default=2,
+                        help='The size of batches in each forward pass')
+
+    parser.add_argument('--training-batch', action='store', type=int, default=32,
+                        help='The size of training batches per session')
+    parser.add_argument("--update-epoches", type=int, default=1,
+                        help="the number of epochs to update the policy")
+    parser.add_argument("--warmup-updates", action="store", type=int, default=0,
+                        help="The number of warmup updates before training starts")
+
+    parser.add_argument("-i", "--inference", dest="inference", action="store_true",
+                        help="Run in inference-only mode")
+    parser.add_argument("-t", "--training", dest="inference", action="store_false",
+                        help="Run in training mode")
+    parser.set_defaults(inference=True)
 
     args = parser.parse_args()
 
