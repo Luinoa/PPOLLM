@@ -172,4 +172,5 @@ if __name__ == "__main__":
     else:
         print("[INFO] Running in training mode")
 
+    print(f"[INFO] Starting server on port {args.port}...")
     uvicorn.run(app, host="0.0.0.0", port=args.port)
