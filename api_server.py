@@ -1,4 +1,4 @@
-# ppo_server.py
+# api_server.py
 # PPO + LangChain agent server for multi-task asynchronous interaction
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
@@ -97,7 +97,7 @@ async def feedback(req: FeedbackRequest):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    # Algorithm specific arguments
+    # Algorithm specific arguments, mostly only useful in training
     parser.add_argument("--policy-learning-rate", type=float, default=1e-6,
                         help="the learning rate of the optimizer")
     parser.add_argument("--value-learning-rate", type=float, default=3e-5,
@@ -151,14 +151,14 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
     parser.add_argument('--forward-batch', action='store', type=int, default=2,
-                        help='The size of batches in each forward pass')
+                        help='The size of batches in each forward pass') # Forward in parallel, very memory sensitive
 
     parser.add_argument('--training-batch', action='store', type=int, default=32,
-                        help='The size of training batches per session')
+                        help='The size of training batches per session') # How many samples to train on per session (or per task)
     parser.add_argument("--update-epoches", type=int, default=1,
                         help="the number of epochs to update the policy")
     parser.add_argument("--warmup-updates", action="store", type=int, default=0,
-                        help="The number of warmup updates before training starts")
+                        help="The number of warmup updates before training starts") # Only for training critic
 
     parser.add_argument("-i", "--inference", dest="inference", action="store_true",
                         help="Run in inference-only mode")
