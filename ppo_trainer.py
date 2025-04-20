@@ -79,18 +79,20 @@ class PPOTrainer:
         b_advantages = torch.cat(all_advantages, dim=0)
 
         # Shuffle for batching
-        batch_size = b_obs.shape[0]
+        batch_size = len(b_obs)
         b_inds = np.arange(batch_size)
         np.random.shuffle(b_inds)
 
         kl_explode = False
         total_approx_kl = torch.tensor(0.0, device=self.device)
+        v_loss = torch.tensor(0.0, device=self.device)
         pg_loss = torch.tensor(0.0, device=self.device)
         entropy_loss = torch.tensor(0.0, device=self.device)
         old_approx_kl = torch.tensor(0.0, device=self.device)
         clipfracs = []
         policy_update_steps = 0
 
+        is_warmup = False
         if global_step <= args.warmup_updates:
             is_warmup = True
 
@@ -190,11 +192,3 @@ class PPOTrainer:
         self.writer.add_scalar("charts/SPS", global_step / (time.time() - start_time), global_step)
 
         return {"value_loss": v_loss.item(), "policy_loss": pg_loss.item(), "approx_kl": approx_kl.item()}
-
-    def reset_optimizers(self, args, update, batch_size):
-        """ warm up the learning rate of the optimizers. """
-        num_updates = args.total_timesteps // batch_size
-        num_critic_warm_up_updates = args.critic_warm_up_steps // batch_size
-        frac = 1.0 - (update - 1.0 - num_critic_warm_up_updates) / num_updates
-        self.policy_optimizer.param_groups[0]["lr"] = frac * args.policy_learning_rate
-        self.value_optimizer.param_groups[0]["lr"] = frac * args.value_learning_rate
