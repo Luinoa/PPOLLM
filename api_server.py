@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--gradient-checkpointing-steps', action='store', type=int, default=8,
                         help='The number of steps for gradient checkpointing')
-    parser.add_argument('--critic-warm-up-steps', action='store', type=int, default=5000,
+    parser.add_argument('--critic-warm-up-steps', action='store', type=int, default=0,
                         help='The number of time steps to warm up critic')
 
     parser.add_argument('--record-path', action='store', type=str, default="record",
@@ -167,6 +167,8 @@ if __name__ == "__main__":
 
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
+    parser.add_argument('--inference-batch', action='store', type=int, default=2,
+                        help='The size of inference batches per session')
 
     args = parser.parse_args()
 

@@ -82,7 +82,7 @@ class PPOAgentServer:
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
 
-        self.agent = LLMAgent(normalization_mode="word", batch_size=2, inference=args.inference)
+        self.agent = LLMAgent(normalization_mode="word", batch_size=args.inference_batch, inference=args.inference)
 
         if not self.inference:
             self.writer = SummaryWriter(f"{args.record_path}")
