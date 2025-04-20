@@ -82,6 +82,8 @@ class PPOAgentServer:
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
 
+        self.global_step = 1
+
         self.agent = LLMAgent(normalization_mode="word", batch_size=args.inference_batch, inference=args.inference)
 
         if not self.inference:
@@ -191,9 +193,12 @@ class PPOAgentServer:
                     # Gather experiences from all sessions
                     experiences = self.gather_experiences()
                     print('signal')
-                    # Perform PPO update
+                    # Perform PPO update and save
                     if not self.inference:
-                        self.trainer.update(experiences)
+                        tmp_info = self.trainer.update(experiences, self.global_step)
+                        print(f"Training step {self.global_step}: {tmp_info}")
+                        self.agent.save(self.global_step, self.args.record_path)
+                        self.global_step += 1
                         self.writer.flush()
         else:
             raise ValueError(f"Pending feedback not found for task_id {task_id}.")

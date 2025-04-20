@@ -131,7 +131,10 @@ class LLMAgent(nn.Module):
     def _init_critic(self, critic_weights=None):
         critic = Critic(self.actor, self.tokenizer)
         if critic_weights is not None:
-            critic.v_head.load_state_dict(torch.load(critic_weights, map_location="cpu"))
+            ckpt = torch.load(critic_weights, map_location=self.device)
+            # critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
+            critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
+            critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
         return critic
 
     def save(self, epoch, exp_path):
@@ -143,7 +146,11 @@ class LLMAgent(nn.Module):
         # save lora
         self.actor.save_pretrained(exp_path)
         # save critic
-        torch.save(self.critic.v_head.state_dict(), os.path.join(exp_path, "critic.pth"))
+        torch.save({
+            # "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
+            "v_head_mlp2": self.critic.v_head_mlp2.state_dict(),
+            "v_head_mlp3": self.critic.v_head_mlp3.state_dict()
+        }, os.path.join(exp_path, "critic.pth"))
 
     def load(self, exp_path):
         print("load model")

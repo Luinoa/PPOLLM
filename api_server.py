@@ -1,9 +1,6 @@
 # ppo_server.py
 # PPO + LangChain agent server for multi-task asynchronous interaction
-import uuid
-
 from fastapi import FastAPI, Request
-from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
 from pydantic import BaseModel
 import uvicorn
 from typing import Dict, Any
@@ -117,10 +114,12 @@ if __name__ == "__main__":
     parser.add_argument("--num-steps", type=int, default=32,
                         help="the number of steps to run in each environment per policy rollout")
 
+    """
     parser.add_argument("--anneal-lr", dest="anneal_lr", action="store_true", help="Enable learning rate annealing")
     parser.add_argument("--no-anneal-lr", dest="anneal_lr", action="store_false",
                         help="Disable learning rate annealing")
     parser.set_defaults(anneal_lr=True)
+    """
 
     parser.add_argument("--gamma", type=float, default=0.99,
                         help="the discount factor gamma")
@@ -130,8 +129,13 @@ if __name__ == "__main__":
                         help="the number of mini-batches")
     parser.add_argument("--value-minibatch-size", type=int, default=4,
                         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=1,
-                        help="the K epochs to update the policy")
+
+    parser.add_argument('--training-batch', action='store', type=int, default=32,
+                        help='The size of training batches per session')
+    parser.add_argument("--update-epoches", type=int, default=1,
+                        help="the number of epochs to update the policy")
+    parser.add_argument("--warmup-updates", action="store", type=int, default=0,
+                        help="The number of warmup updates before training starts")
 
     parser.add_argument("--norm-adv", dest="norm_adv", action="store_true", help="Enable advantages normalization")
     parser.add_argument("--no-norm-adv", dest="norm_adv", action="store_false", help="Disable advantages normalization")
@@ -156,14 +160,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--gradient-checkpointing-steps', action='store', type=int, default=8,
                         help='The number of steps for gradient checkpointing')
-    parser.add_argument('--critic-warm-up-steps', action='store', type=int, default=0,
-                        help='The number of time steps to warm up critic')
 
-    parser.add_argument('--record-path', action='store', type=str, default="record",
+    parser.add_argument('--record-path', action='store', type=str, default="weights/PPO",
                         help='The path to save the tensorboard results')
 
-    parser.add_argument('--training-batch', action='store', type=int, default=32,
-                        help='The size of training batches per session')
 
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
