@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import FastAPI, Request
+from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
 from pydantic import BaseModel
 import uvicorn
 from typing import Dict, Any
@@ -99,7 +100,11 @@ async def feedback(req: FeedbackRequest):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--inference", action="store_true", help="Run in inference-only mode")
+    parser.add_argument("-i", "--inference", dest="inference", action="store_true",
+                        help="Run in inference-only mode")
+    parser.add_argument("-t", "--training", dest="inference", action="store_false",
+                        help="Run in training mode")
+    parser.set_defaults(inference=True)
 
     # Algorithm specific arguments
     parser.add_argument("--policy-learning-rate", type=float, default=1e-6,
