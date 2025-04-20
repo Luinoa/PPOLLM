@@ -110,57 +110,57 @@ class PPOTrainer:
             nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
             self.value_optimizer.step()
 
-            if is_warmup:
-                return {"value_loss": v_loss.item(), "policy_loss": 0.0, "approx_kl": 0.0}
+        if is_warmup:
+            return {"value_loss": v_loss.item(), "policy_loss": 0.0, "approx_kl": 0.0}
 
-            # Policy Update
-            self.policy_optimizer.zero_grad()
-            for start in range(0, batch_size, args.policy_minibatch_size):
-                end = start + args.policy_minibatch_size
-                mb_inds = b_inds[start:end]
+        # Policy Update
+        self.policy_optimizer.zero_grad()
+        for start in range(0, batch_size, args.policy_minibatch_size):
+            end = start + args.policy_minibatch_size
+            mb_inds = b_inds[start:end]
 
-                # Gradient accumulation
-                if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                    total_approx_kl = torch.tensor(0.0, device=self.device)
+            # Gradient accumulation
+            if policy_update_steps % args.gradient_checkpointing_steps == 0:
+                total_approx_kl = torch.tensor(0.0, device=self.device)
 
-                # Get action values
-                _, newlogprob, entropy, _ = self.agent.get_action_and_value(
-                    b_obs[mb_inds], b_actions[mb_inds], is_warmup, return_value=False
-                )
+            # Get action values
+            _, newlogprob, entropy, _ = self.agent.get_action_and_value(
+                b_obs[mb_inds], b_actions[mb_inds], is_warmup, return_value=False
+            )
 
-                logratio = newlogprob - b_logprobs[mb_inds]
-                ratio = logratio.exp()
+            logratio = newlogprob - b_logprobs[mb_inds]
+            ratio = logratio.exp()
 
-                with torch.no_grad():
-                    old_approx_kl = (-logratio).mean()
-                    approx_kl = ((ratio - 1) - logratio).mean()
-                    total_approx_kl += approx_kl / args.gradient_checkpointing_steps
-                    clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
+            with torch.no_grad():
+                old_approx_kl = (-logratio).mean()
+                approx_kl = ((ratio - 1) - logratio).mean()
+                total_approx_kl += approx_kl / args.gradient_checkpointing_steps
+                clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
 
-                mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+            mb_advantages = b_advantages[mb_inds]
+            if args.norm_adv:
+                mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
-                pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-                entropy_loss = entropy.mean()
-                loss = pg_loss - args.ent_coef * entropy_loss
-                loss /= args.gradient_checkpointing_steps  # normalize for accumulation
+            pg_loss1 = -mb_advantages * ratio
+            pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+            pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+            entropy_loss = entropy.mean()
+            loss = pg_loss - args.ent_coef * entropy_loss
+            loss /= args.gradient_checkpointing_steps  # normalize for accumulation
 
-                loss.backward()
+            loss.backward()
 
-                policy_update_steps += 1
-                if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                    if args.target_kl is not None and total_approx_kl > args.target_kl:
-                        self.policy_optimizer.zero_grad()
-                        kl_explode = True
-                        policy_update_steps -= args.gradient_checkpointing_steps
-                        break  # early stopping
-
-                    nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
-                    self.policy_optimizer.step()
+            policy_update_steps += 1
+            if policy_update_steps % args.gradient_checkpointing_steps == 0:
+                if args.target_kl is not None and total_approx_kl > args.target_kl:
                     self.policy_optimizer.zero_grad()
+                    kl_explode = True
+                    policy_update_steps -= args.gradient_checkpointing_steps
+                    break  # early stopping
+
+                nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
+                self.policy_optimizer.step()
+                self.policy_optimizer.zero_grad()
 
         # Logging
         self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
