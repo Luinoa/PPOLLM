@@ -191,8 +191,8 @@ class LLMAgent(nn.Module):
         flat_action_list = [item for sublist in action_list for item in sublist]
 
         # Tokenize the flattened action list and calculate token length per action
-        self.action_list_ids = self.tokenizer(flat_action_list, return_tensors="pt", padding=True)
-        self.action_list_length = torch.sum(self.action_list_ids["attention_mask"], dim=-1) - 1  # exclude BOS
+        action_list_ids = self.tokenizer(flat_action_list, return_tensors="pt", padding=True)
+        action_list_length = torch.sum(action_list_ids["attention_mask"], dim=-1) - 1  # exclude BOS
 
         # Prepare to store logits
         all_action_logits = []
@@ -218,7 +218,7 @@ class LLMAgent(nn.Module):
 
             # Slice logits to get action-specific scores
             sequence_length = torch.sum(attention_mask, dim=-1)
-            batch_action_length = self.action_list_length[i:i + len(batch_seq)]
+            batch_action_length = action_list_length[i:i + len(batch_seq)]
             batch_action_index = [[end - start, end] for start, end in zip(batch_action_length, sequence_length)]
 
             slices = [gen_logits[j, start - 1:end - 1] for j, (start, end) in enumerate(batch_action_index)]
@@ -233,7 +233,7 @@ class LLMAgent(nn.Module):
         action_logits = torch.cat(all_action_logits, dim=0).to(self.device)
 
         if self.normalization_mode == 'token':
-            action_logits = action_logits / self.action_list_length.to(self.device)
+            action_logits = action_logits / action_list_length.to(self.device)
         elif self.normalization_mode == 'word':
             action_word_num = torch.tensor([len(action.split()) for action in flat_action_list]).to(self.device)
             action_logits = action_logits / action_word_num
