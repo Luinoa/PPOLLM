@@ -70,6 +70,9 @@ class PPOTrainer:
             all_returns.append(returns)
             all_advantages.append(advantages)
 
+            del next_value, delta, lastgaelam, advantages, returns
+            torch.cuda.empty_cache()
+
         # Flatten across all experience segments (i.e., list of variable-length tensors)
         b_obs = [item for sublist in all_obs for item in sublist] # Dicts here, different from original codes.
         b_actions = torch.cat(all_actions, dim=0)
@@ -119,6 +122,9 @@ class PPOTrainer:
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                 self.value_optimizer.step()
+
+                del newvalue, v_loss_unclipped, v_clipped, v_loss_clipped
+                torch.cuda.empty_cache()
 
             if is_warmup:
                 continue
@@ -172,9 +178,15 @@ class PPOTrainer:
                     self.policy_optimizer.step()
                     self.policy_optimizer.zero_grad()
 
+                del newlogprob, logratio, ratio, mb_advantages, pg_loss1, pg_loss2
+                torch.cuda.empty_cache()
+
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
+        del b_obs, b_actions, b_logprobs, b_values, b_returns, b_advantages, b_inds
+        torch.cuda.empty_cache()
 
         # Logging
         self.writer.add_scalar("charts/policy_learning_rate", self.policy_optimizer.param_groups[0]["lr"], global_step)
