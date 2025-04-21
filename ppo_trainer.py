@@ -121,7 +121,7 @@ class PPOTrainer:
                 self.value_optimizer.step()
 
             if is_warmup:
-                return {"value_loss": v_loss.item(), "policy_loss": 0.0, "approx_kl": 0.0}
+                continue
 
             # Policy Update
             self.policy_optimizer.zero_grad()
