@@ -148,16 +148,8 @@ class PPOTrainer:
                     clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
 
                 mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv:
-                    adv_mean = mb_advantages.mean()
-                    adv_std = mb_advantages.std()
-                 # only normalize if we have at least two samples and non‑zero std
-
-                if mb_advantages.numel() > 1 and adv_std > 0:
-                    mb_advantages = (mb_advantages - adv_mean) / (adv_std + 1e-8)
-                else:
-                    # just zero‑center if we can’t normalize
-                    mb_advantages = mb_advantages - adv_mean
+                if args.norm_adv and len(mb_inds) > 1:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
