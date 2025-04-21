@@ -195,7 +195,7 @@ class PPOAgentServer:
                 if self.get_total_trajectory_size() >= len(self.sessions) * self.args.training_batch:
                     # Gather experiences from all sessions
                     experiences = self.gather_experiences()
-                    print('signal')
+                    print('Experiences gathered:', len(experiences))
                     # Perform PPO update and save
                     if not self.inference:
                         tmp_info = self.trainer.update(experiences, self.global_step)

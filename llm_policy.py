@@ -224,7 +224,10 @@ class LLMAgent(nn.Module):
             slices = [gen_logits[j, start - 1:end - 1] for j, (start, end) in enumerate(batch_action_index)]
             batch_action_logits = torch.stack([torch.sum(s) for s in slices])
 
-            all_action_logits.append(batch_action_logits.detach())
+            if self.inference:
+                # In inference mode, we need to detach the logits
+                batch_action_logits = batch_action_logits.detach()
+            all_action_logits.append(batch_action_logits)
 
         # Combine all logits from batches
         action_logits = torch.cat(all_action_logits, dim=0).to(self.device)

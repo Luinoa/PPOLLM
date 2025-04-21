@@ -115,7 +115,7 @@ if __name__ == "__main__":
                         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
                         help="the lambda for the general advantage estimation")
-    parser.add_argument("--policy-minibatch-size", type=int, default=32,
+    parser.add_argument("--policy-minibatch-size", type=int, default=8,
                         help="the number of mini-batches")
     parser.add_argument("--value-minibatch-size", type=int, default=4,
                         help="the number of mini-batches")
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     parser.add_argument('--forward-batch', action='store', type=int, default=2,
                         help='The size of batches in each forward pass') # Forward in parallel, very memory sensitive
 
-    parser.add_argument('--training-batch', action='store', type=int, default=32,
+    parser.add_argument('--training-batch', action='store', type=int, default=8,
                         help='The size of training batches per session') # How many samples to train on per session (or per task)
     parser.add_argument("--update-epoches", type=int, default=1,
                         help="the number of epochs to update the policy")

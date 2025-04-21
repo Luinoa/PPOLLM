@@ -36,16 +36,16 @@ class PPOTrainer:
 
         for exp in experience_list:
             obs = exp['obs']  # [T, ...]
-            actions = exp['actions']
-            logprobs = exp['logprobs']
-            rewards = exp['rewards']
-            dones = exp['dones']
-            values = exp['values']
+            actions = exp['actions'].to(self.device)
+            logprobs = exp['logprobs'].to(self.device)
+            rewards = exp['rewards'].to(self.device)
+            dones = exp['dones'].to(self.device)
+            values = exp['values'].to(self.device)
             next_obs = exp['next_obs']
-            next_done = exp['next_done']
+            next_done = exp['next_done'].to(self.device)
 
             with torch.no_grad():
-                next_value = self.agent.get_value(next_obs).reshape(1)
+                next_value = self.agent.get_value(next_obs["prompt"]).reshape(1)
                 T = rewards.shape[0]
                 advantages = torch.zeros_like(rewards, device=self.device)
                 lastgaelam = 0
@@ -71,7 +71,7 @@ class PPOTrainer:
             all_advantages.append(advantages)
 
         # Flatten across all experience segments (i.e., list of variable-length tensors)
-        b_obs = all_obs # Dicts here, different from original codes.
+        b_obs = [item for sublist in all_obs for item in sublist] # Dicts here, different from original codes.
         b_actions = torch.cat(all_actions, dim=0)
         b_logprobs = torch.cat(all_logprobs, dim=0)
         b_values = torch.cat(all_values, dim=0)
@@ -103,7 +103,7 @@ class PPOTrainer:
             for start in range(0, batch_size, args.value_minibatch_size):
                 end = start + args.value_minibatch_size
                 mb_inds = b_inds[start:end]
-                newvalue = self.agent.get_value(b_obs[mb_inds]).view(-1)
+                newvalue = self.agent.get_value([b_obs[i]["prompt"] for i in mb_inds]).view(-1)
                 if args.clip_vloss:
                     v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                     v_clipped = b_values[mb_inds] + torch.clamp(
@@ -135,7 +135,7 @@ class PPOTrainer:
 
                 # Get action values
                 _, newlogprob, entropy, _ = self.agent.get_action_and_value(
-                    b_obs[mb_inds], b_actions[mb_inds], is_warmup, return_value=False
+                    [b_obs[i] for i in mb_inds], b_actions[mb_inds], is_warmup, return_value=False
                 )
 
                 logratio = newlogprob - b_logprobs[mb_inds]
@@ -149,7 +149,15 @@ class PPOTrainer:
 
                 mb_advantages = b_advantages[mb_inds]
                 if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                    adv_mean = mb_advantages.mean()
+                    adv_std = mb_advantages.std()
+                 # only normalize if we have at least two samples and non‑zero std
+
+                if mb_advantages.numel() > 1 and adv_std > 0:
+                    mb_advantages = (mb_advantages - adv_mean) / (adv_std + 1e-8)
+                else:
+                    # just zero‑center if we can’t normalize
+                    mb_advantages = mb_advantages - adv_mean
 
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
