@@ -140,7 +140,7 @@ class LLMAgent(nn.Module):
     def save(self, epoch, exp_path):
         assert not self.inference
         print("save model")
-        exp_path = os.path.join(exp_path, "epoch_{:04d}".format(epoch))
+        exp_path = os.path.join(exp_path, "actor")
 
         os.makedirs(exp_path, exist_ok=True)
         # save lora
@@ -150,7 +150,7 @@ class LLMAgent(nn.Module):
             # "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
             "v_head_mlp2": self.critic.v_head_mlp2.state_dict(),
             "v_head_mlp3": self.critic.v_head_mlp3.state_dict()
-        }, os.path.join(exp_path, "critic.pth"))
+        }, os.path.join(exp_path, "critic/critic.pth"))
 
     def load(self, exp_path):
         print("load model")
