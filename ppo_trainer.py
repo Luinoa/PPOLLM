@@ -103,6 +103,7 @@ class PPOTrainer:
             if kl_explode:
                 break
             # Value Update
+            self.value_optimizer.zero_grad()
             for start in range(0, batch_size, args.value_minibatch_size):
                 end = start + args.value_minibatch_size
                 mb_inds = b_inds[start:end]
@@ -118,7 +119,6 @@ class PPOTrainer:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
                 loss = v_loss * args.vf_coef
-                self.value_optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                 self.value_optimizer.step()
@@ -169,14 +169,12 @@ class PPOTrainer:
                 policy_update_steps += 1
                 if policy_update_steps % args.gradient_checkpointing_steps == 0:
                     if args.target_kl is not None and total_approx_kl > args.target_kl:
-                        self.policy_optimizer.zero_grad()
                         kl_explode = True
                         policy_update_steps -= args.gradient_checkpointing_steps
                         break  # early stopping
 
                     nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                     self.policy_optimizer.step()
-                    self.policy_optimizer.zero_grad()
 
                 del newlogprob, logratio, ratio, mb_advantages, pg_loss1, pg_loss2
                 torch.cuda.empty_cache()
@@ -203,4 +201,4 @@ class PPOTrainer:
         print("SPS:", global_step, (time.time() - start_time))
         self.writer.add_scalar("charts/SPS", global_step / (time.time() - start_time), global_step)
 
-        return {"value_loss": v_loss.item(), "policy_loss": pg_loss.item(), "approx_kl": approx_kl.item()}
+        return {"value_loss": v_loss.item(), "policy_loss": pg_loss.item(), "approx_kl": total_approx_kl.item()}
