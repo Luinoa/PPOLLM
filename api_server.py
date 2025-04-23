@@ -153,7 +153,7 @@ if __name__ == "__main__":
     parser.add_argument('--forward-batch', action='store', type=int, default=1,
                         help='The size of batches in each forward pass') # Forward in parallel, very memory sensitive
 
-    parser.add_argument('--training-batch', action='store', type=int, default=8,
+    parser.add_argument('--training-batch', action='store', type=int, default=1,
                         help='The size of training batches per session') # How many samples to train on per session (or per task)
     parser.add_argument("--update-epoches", type=int, default=1,
                         help="the number of epochs to update the policy")

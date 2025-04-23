@@ -34,7 +34,7 @@ class LLMAgent(nn.Module):
 
         self.load_8bit = load_8bit
         self.base_model = 'Qwen/Qwen2-0.5B'
-        self.lora_r = 8
+        self.lora_r = 4
         self.lora_alpha = 16
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
@@ -171,7 +171,7 @@ class LLMAgent(nn.Module):
             value = self.critic(input_ids, attention_mask=attention_mask)
         return value
 
-    def get_action_and_value(self, text_obs, action=None, is_warmup=False, return_value=True):
+    def get_action_and_value(self, text_obs, action=None, return_value=True, no_grad=False):
         prompt = [o["prompt"] for o in text_obs]
         action_list = [o["action"] for o in text_obs]
 
@@ -206,7 +206,7 @@ class LLMAgent(nn.Module):
             attention_mask = batch_input["attention_mask"]
 
             # Forward pass (no grad if warmup or inference)
-            with torch.no_grad() if is_warmup or self.inference else torch.enable_grad():
+            with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
                 outputs = self.actor(input_ids, attention_mask=attention_mask)
 
             logits = torch.log_softmax(outputs.logits, dim=-1)

@@ -141,7 +141,7 @@ class PPOTrainer:
 
                 # Get action values
                 _, newlogprob, entropy, _ = self.agent.get_action_and_value(
-                    [b_obs[i] for i in mb_inds], b_actions[mb_inds], is_warmup, return_value=False
+                    [b_obs[i] for i in mb_inds], b_actions[mb_inds], return_value=False
                 )
 
                 logratio = newlogprob - b_logprobs[mb_inds]
