@@ -84,7 +84,11 @@ class PPOAgentServer:
 
         self.global_step = 1
 
-        self.agent = LLMAgent(normalization_mode="word", batch_size=args.forward_batch, inference=args.inference)
+        self.agent = LLMAgent(normalization_mode="word",
+                              batch_size=args.forward_batch,
+                              inference=args.inference,
+                              base_model=args.model,
+                              )
 
         if not self.inference:
             self.writer = SummaryWriter(f"{args.record_path}")
