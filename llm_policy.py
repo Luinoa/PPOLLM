@@ -29,7 +29,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class LLMAgent(nn.Module):
-    def __init__(self, normalization_mode='token', load_path=None, load_8bit=False, batch_size=1, inference=False, base_model=None):
+    def __init__(self, normalization_mode='word', load_path=None, load_8bit=False, batch_size=1, inference=False, base_model=None):
         super().__init__()
 
         self.load_8bit = load_8bit
@@ -178,59 +178,49 @@ class LLMAgent(nn.Module):
         prompt_nums = len(prompt)
         action_nums = [len(item) for item in action_list]
 
-        sequence = []
-        for p, ac in zip(prompt, action_list):
-            sequence += [p + " " + a for a in ac]
-
-        # Construct input sequences: prompt + action for each option
-        sequence = []
-        for p, ac in zip(prompt, action_list):
-            sequence += [p + " " + a for a in ac]
-
-        # Flatten the action list for later normalization
         flat_action_list = [item for sublist in action_list for item in sublist]
-
-        # Tokenize the flattened action list and calculate token length per action
-        action_list_ids = self.tokenizer(flat_action_list, return_tensors="pt", padding=True)
-        action_list_length = torch.sum(action_list_ids["attention_mask"], dim=-1) - 1  # exclude BOS
-
-        # Prepare to store logits
         all_action_logits = []
+        action_list_length = []
 
-        # Process in batches
-        for i in range(0, len(sequence), self.batch_size):
-            batch_seq = sequence[i:i + self.batch_size]
-            batch_input = self.tokenizer(batch_seq, return_tensors="pt", padding=True).to(self.device)
+        for p, ac_list in zip(prompt, action_list):
+            # Tokenize prompt
+            prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False).to(self.device)
 
-            input_ids = batch_input["input_ids"]
-            attention_mask = batch_input["attention_mask"]
-
-            # Forward pass (no grad if warmup or inference)
+            # 先 forward prompt，获得 past_key_values
             with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
-                outputs = self.actor(input_ids, attention_mask=attention_mask)
+                prompt_outputs = self.actor(**prompt_ids, use_cache=True)
+            past_key_values = prompt_outputs.past_key_values
 
-            logits = torch.log_softmax(outputs.logits, dim=-1)
+            for action_str in ac_list:
+                # Tokenize action（不加 special tokens，保持拼接一致）
+                action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False).to(self.device)
+                action_input_ids = action_ids["input_ids"]  # [1, T]
+                attention_mask = action_ids["attention_mask"]
 
-            # Shift inputs for token prediction
-            logits = logits[:, :-1, :]
-            input_ids = input_ids[:, 1:]
-            gen_logits = torch.gather(logits, 2, input_ids[:, :, None]).squeeze(-1)
+                action_len = attention_mask.sum().item()
+                action_list_length.append(action_len)
 
-            # Slice logits to get action-specific scores
-            sequence_length = torch.sum(attention_mask, dim=-1)
-            batch_action_length = action_list_length[i:i + len(batch_seq)]
-            batch_action_index = [[end - start, end] for start, end in zip(batch_action_length, sequence_length)]
+                # 用 past_key_values 推理 action（不再缓存）
+                with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
+                    outputs = self.actor(
+                        input_ids=action_input_ids,
+                        past_key_values=past_key_values,
+                        use_cache=False
+                    )
+                    logits = torch.log_softmax(outputs.logits, dim=-1)  # [1, T, V]
 
-            slices = [gen_logits[j, start - 1:end - 1] for j, (start, end) in enumerate(batch_action_index)]
-            batch_action_logits = torch.stack([torch.sum(s) for s in slices])
+                # Shift logits and compute log probs
+                shifted_logits = logits[:, :-1, :]  # ignore last prediction
+                shifted_input_ids = action_input_ids[:, 1:]  # target tokens
+                log_probs = torch.gather(shifted_logits, 2, shifted_input_ids[:, :, None]).squeeze(-1)  # [1, T-1]
 
-            if self.inference:
-                # In inference mode, we need to detach the logits
-                batch_action_logits = batch_action_logits.detach()
-            all_action_logits.append(batch_action_logits)
+                # Sum log probs (you can average later if needed)
+                total_log_prob = log_probs.sum(dim=1).squeeze(0)  # scalar
+                all_action_logits.append(total_log_prob)
 
-        # Combine all logits from batches
-        action_logits = torch.cat(all_action_logits, dim=0).to(self.device)
+        # Convert to tensor
+        action_logits = torch.stack(all_action_logits).to(self.device)
+        action_list_length = torch.tensor(action_list_length).to(self.device)
 
         if self.normalization_mode == 'token':
             action_logits = action_logits / action_list_length.to(self.device)
