@@ -1,11 +1,24 @@
 # ppo_server_agent.py
-import torch
-import uuid
 import threading
-from typing import Dict, Optional, Tuple, List, Union
-from ppo_trainer import PPOTrainer
-from llm_policy import LLMAgent
+import uuid
+from typing import Dict, Optional, List, Union, Any
+
+import torch
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_chroma import Chroma
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_ollama import OllamaEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from torch.utils.tensorboard import SummaryWriter
+
+from llm_policy import LLMAgent
+from ppo_trainer import PPOTrainer
 
 
 class LLMTaskSession:
@@ -81,6 +94,44 @@ class PPOAgentServer:
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
+        self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+        self.store = {}
+
+        # Initialize the retriever
+        markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
+        loader = UnstructuredMarkdownLoader(markdown_path)
+        data = loader.load()
+        assert len(data) == 1
+        assert isinstance(data[0], Document)
+        readme_content = data[0].page_content
+        api_start_index = readme_content.find("API Documents")
+        api_content = readme_content[api_start_index:] if api_start_index != -1 else ""
+
+        api_document = Document(page_content=api_content)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+        all_splits = text_splitter.split_documents([api_document])
+        vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+        self.retriever = vector_store.as_retriever()
+
+        contextualize_q_system_prompt = (
+            "Given a chat history which might reference context in the chat history, "
+            "formulate a standalone question which can be understood without the chat history. Do NOT answer the question."
+        )
+        contextualize_q_prompt = ChatPromptTemplate.from_messages(
+            [("system", contextualize_q_system_prompt), MessagesPlaceholder("chat_history")]
+        )
+        self.history_aware_retriever = create_history_aware_retriever(self.agent, self.retriever, contextualize_q_prompt)
+
+        # Setup question-answer chain
+        system_prompt = (
+            "You are an expert in App GUI testing to guide the testing tool to enhance the coverage of "
+            "functional scenarios in testing the App based on your extensive App testing experience."
+            "\n\n{context}"
+        )
+        qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("chat_history")])
+        question_answer_chain = create_stuff_documents_chain(self.agent, qa_prompt)
+
+        self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
 
         self.global_step = 1
 
@@ -146,9 +197,14 @@ class PPOAgentServer:
             session.status = "pending"
             return True
 
+    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        if session_id not in self.store:
+            self.store[session_id] = ChatMessageHistory()
+        return self.store[session_id]
+
     def step(
             self, task_id: str, obs: Union[str, List[str]]
-    ) -> Tuple[str, Dict]:
+    ) -> dict[str, Any]:
         """
         Take one interaction step given prompt or observation. Returns the next action.
         """
@@ -172,7 +228,27 @@ class PPOAgentServer:
             "logprob": logprob,
             "value": value
         })
-        return action_sampled
+
+        # Now, integrate RAG: Use the observation and task ID to generate an enhanced action or answer
+        conversational_rag_chain = RunnableWithMessageHistory(
+            self.rag_chain,
+            self.get_session_history,
+            history_messages_key="chat_history",
+            output_messages_key="answer",
+        )
+
+        # We use the observation as input to the RAG chain for more informed decision-making
+        rag_result = conversational_rag_chain.invoke(
+            {"input": obs},
+            config={"configurable": {"session_id": task_id}},
+        )["answer"]
+
+        result = {
+            "action_sampled": action_sampled,
+            "rag_result": rag_result
+        }
+
+        return result
 
     def feedback(
             self, task_id:str, reward: float, done: bool, next_obs: Optional[Union[str, List[str]]] = None
