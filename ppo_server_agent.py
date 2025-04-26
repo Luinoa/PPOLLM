@@ -128,7 +128,7 @@ class PPOAgentServer:
             "You are an expert in App GUI testing to guide the testing tool to enhance the coverage of "
             "functional scenarios in testing the App based on your extensive App testing experience."
             "I'll give you a obs and you need to polish the obs based on the history and action taken by the user."
-            "Please provide me with the polished obs."
+            "Please provide me with the polished obs,not the answer."
             "\n\n{context}"
         )
         qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("chat_history")])
