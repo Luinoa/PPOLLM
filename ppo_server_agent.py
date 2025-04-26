@@ -1,7 +1,7 @@
 # ppo_server_agent.py
 import threading
 import uuid
-from typing import Dict, Optional, List, Union, Any
+from typing import Dict, Optional, List, Union, Any, Tuple
 
 import torch
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
@@ -23,9 +23,10 @@ from ppo_trainer import PPOTrainer
 
 class LLMTaskSession:
     """Per-task session to accumulate interactions and trigger training if allowed."""
+
     def __init__(self, task_id: str, status: str = "attached"):
         self.task_id = task_id
-        self.status = status # May be useless
+        self.status = status  # May be useless
         self.trajectory = []
         self.total_steps = 0
         self.pending = None
@@ -43,7 +44,6 @@ class LLMTaskSession:
         self.total_steps += 1
         if done:
             self.status = "done"
-
 
     def get_experience(self):
         """
@@ -114,18 +114,21 @@ class PPOAgentServer:
         self.retriever = vector_store.as_retriever()
 
         contextualize_q_system_prompt = (
-            "Given a chat history which might reference context in the chat history, "
-            "formulate a standalone question which can be understood without the chat history. Do NOT answer the question."
+            "Given a GUI Testing history which might reference context in the GUI Testing history, "
+            "formulate a standalone question which can be understood without the GUI Testing history. Do NOT answer the question."
         )
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
             [("system", contextualize_q_system_prompt), MessagesPlaceholder("chat_history")]
         )
-        self.history_aware_retriever = create_history_aware_retriever(self.agent, self.retriever, contextualize_q_prompt)
+        self.history_aware_retriever = create_history_aware_retriever(self.agent, self.retriever,
+                                                                      contextualize_q_prompt)
 
         # Setup question-answer chain
         system_prompt = (
             "You are an expert in App GUI testing to guide the testing tool to enhance the coverage of "
             "functional scenarios in testing the App based on your extensive App testing experience."
+            "I'll give you a obs and you need to polish the obs based on the history and action taken by the user."
+            "Please provide me with the polished obs."
             "\n\n{context}"
         )
         qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("chat_history")])
@@ -202,9 +205,60 @@ class PPOAgentServer:
             self.store[session_id] = ChatMessageHistory()
         return self.store[session_id]
 
+    def rag_step(self, task_id: str, obs: Union[str, List[str]]) -> Tuple[str, Any]:
+        """
+        Take one RAG step given chat history. Returns the next action.
+        """
+        if task_id not in self.sessions:
+            raise ValueError(f"Unknown task_id {task_id}. Call new_task() first.")
+
+        session = self.sessions[task_id]
+
+        conversational_rag_chain = RunnableWithMessageHistory(
+            self.rag_chain,
+            self.get_session_history,
+            history_messages_key="chat_history",
+            output_messages_key="polished_obs",
+            )
+
+        # Use the observation and task ID to generate an enhanced action or answer using RAG
+        rag_result = conversational_rag_chain.invoke(
+            {"input": obs},
+            config={"configurable": {"session_id": task_id}},
+        )["polished_obs"]
+
+        # Get action, logprob, and value estimate
+        with torch.no_grad():
+            if self.inference:
+                action, logprob, _, value = self.agent.get_action_and_value([rag_result], return_value=False)
+            else:
+                action, logprob, _, value = self.agent.get_action_and_value([rag_result], return_value=True)
+            self.agent.clean()
+
+        action_sampled = action.cpu().numpy()[0]
+
+        # Store the pending state for later use
+        session.pending = {
+            "obs": obs,
+            "action": action,
+            "logprob": logprob,
+            "value": value
+        }
+
+        '''
+        Optionally combine RAG result with sampled action
+        This depends on how you intend to use the RAG result
+        combined_result = {
+            "action": action_sampled,
+            "rag_result": rag_result,
+        }
+        '''
+
+        return action_sampled
+
     def step(
             self, task_id: str, obs: Union[str, List[str]]
-    ) -> dict[str, Any]:
+    ) -> Tuple[str, Any]:
         """
         Take one interaction step given prompt or observation. Returns the next action.
         """
@@ -223,35 +277,16 @@ class PPOAgentServer:
         action_sampled = action.cpu().numpy()[0]
 
         session.pending = ({
-            "obs" : obs,
+            "obs": obs,
             "action": action,
             "logprob": logprob,
             "value": value
         })
 
-        # Now, integrate RAG: Use the observation and task ID to generate an enhanced action or answer
-        conversational_rag_chain = RunnableWithMessageHistory(
-            self.rag_chain,
-            self.get_session_history,
-            history_messages_key="chat_history",
-            output_messages_key="answer",
-        )
-
-        # We use the observation as input to the RAG chain for more informed decision-making
-        rag_result = conversational_rag_chain.invoke(
-            {"input": obs},
-            config={"configurable": {"session_id": task_id}},
-        )["answer"]
-
-        result = {
-            "action_sampled": action_sampled,
-            "rag_result": rag_result
-        }
-
-        return result
+        return action_sampled
 
     def feedback(
-            self, task_id:str, reward: float, done: bool, next_obs: Optional[Union[str, List[str]]] = None
+            self, task_id: str, reward: float, done: bool, next_obs: Optional[Union[str, List[str]]] = None
     ):
         """
         Provide feedback to the agent. If done, the task is closed.
