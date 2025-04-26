@@ -29,13 +29,14 @@ if api_start_index != -1:
 else:
     api_content = ""
     print("没有找到API Documents")
+
 api_document = Document(page_content=api_content)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
 all_splits = text_splitter.split_documents([api_document])
 
 vector_store = Chroma.from_documents(documents=all_splits, embedding=embeddings)
-docs = [Document(page_content="ui testing")]
-vector_store = Chroma.from_documents(documents=docs, embedding=embeddings)
+# docs = [Document(page_content="ui testing")]
+# vector_store = Chroma.from_documents(documents=docs, embedding=embeddings)
 retriever = vector_store.as_retriever()
 
 
@@ -93,3 +94,12 @@ conversational_rag_chain = RunnableWithMessageHistory(
     history_messages_key="chat_history",
     output_messages_key="answer",
 )
+
+
+# Example usage:
+# var = conversational_rag_chain.invoke(
+#     {"input": "what is the API document?"},
+#     config={
+#         "configurable": {"session_id": "abc123"}
+#     },  # constructs a key "abc123" in `store`.
+# )["answer"]
