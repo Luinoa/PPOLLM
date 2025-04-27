@@ -160,13 +160,12 @@ class LLMAgent(nn.Module):
         }, os.path.join(os.path.join(exp_path, "critic"), "critic.pth"))
 
     def load(self, exp_path):
-        print("load model")
-        lora_weights = exp_path
-        self.actor = self._init_actor(lora_weights).to(self.device)
+        print("[INFO] Loading model...")
+        lora_weights = os.path.join(exp_path, "actor")
+        critic_weights = os.path.join(exp_path, "critic", "critic.pth")
 
-        if not self.inference:
-            critic_weights = os.path.join(exp_path, "critic.pth")
-            self.critic = self._init_critic(critic_weights).to(self.device)
+        self.actor = self._init_actor(lora_weights).to(self.device)
+        self.critic = self._init_critic(critic_weights).to(self.device)
 
     def get_value(self, x):
         assert not self.inference
