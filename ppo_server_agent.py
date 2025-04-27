@@ -88,6 +88,7 @@ class PPOAgentServer:
                               batch_size=args.forward_batch,
                               inference=args.inference,
                               base_model=args.model,
+                              lora_r=args.lora_rank,
                               )
 
         if not self.inference:
@@ -199,11 +200,12 @@ class PPOAgentServer:
                 if self.get_total_trajectory_size() >= len(self.sessions) * self.args.training_batch:
                     # Gather experiences from all sessions
                     experiences = self.gather_experiences()
-                    print('Experiences gathered:', len(experiences))
+                    print('[INFO] Experiences gathered:', len(experiences))
+                    print('[INFO] Experiences sampled:', [len(exp["obs"]) for exp in experiences])
                     # Perform PPO update and save
                     if not self.inference:
                         tmp_info = self.trainer.update(experiences, self.global_step)
-                        print(f"Training step {self.global_step}: {tmp_info}")
+                        print(f"[INFO] Training step {self.global_step}: {tmp_info:.8f}")
                         self.agent.save(self.global_step, self.args.record_path)
                         self.global_step += 1
                         self.writer.flush()

@@ -160,6 +160,9 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-updates", action="store", type=int, default=0,
                         help="The number of warmup updates before training starts") # Only for training critic
 
+    parser.add_argument("--lora-rank", action="store", type=int, default=8,
+                        help="The rank of LoRA layers")
+
     parser.add_argument("-i", "--inference", dest="inference", action="store_true",
                         help="Run in inference-only mode")
     parser.add_argument("-t", "--training", dest="inference", action="store_false",

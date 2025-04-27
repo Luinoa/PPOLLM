@@ -29,12 +29,19 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class LLMAgent(nn.Module):
-    def __init__(self, normalization_mode='word', load_path=None, load_8bit=False, batch_size=1, inference=False, base_model=None):
+    def __init__(self, normalization_mode='word',
+                 load_path=None,
+                 load_8bit=False,
+                 batch_size=1,
+                 inference=False,
+                 base_model=None,
+                 lora_r = 8,
+                 ):
         super().__init__()
 
         self.load_8bit = load_8bit
         self.base_model = base_model
-        self.lora_r = 4
+        self.lora_r = lora_r
         self.lora_alpha = 16
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
