@@ -98,6 +98,7 @@ class PPOAgentServer:
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
 
+        '''
         try:
             # Initialize the retriever
             markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
@@ -118,9 +119,10 @@ class PPOAgentServer:
             self.retriever = vector_store.as_retriever()
 
         except Exception as e:
-            print(f"[Warning] Failed to load or process markdown file: {e}")
-            # fallback：使用一个空的 retriever
-            self.retriever = Chroma.from_documents(documents=[], embedding=self.embeddings).as_retriever()
+        print(f"[Warning] Failed to load or process markdown file: {e}")
+        '''
+        # fallback：使用一个空的 retriever
+        self.retriever = Chroma.from_documents(documents=[], embedding=self.embeddings).as_retriever()
 
         contextualize_q_system_prompt = (
             "Given a GUI Testing history which might reference context in the GUI Testing history, "
