@@ -15,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from torch.utils.tensorboard import SummaryWriter
 
 from llm_policy import LLMAgent
@@ -97,21 +98,27 @@ class PPOAgentServer:
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
 
-        # Initialize the retriever
-        markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
-        loader = UnstructuredMarkdownLoader(markdown_path)
-        data = loader.load()
-        assert len(data) == 1
-        assert isinstance(data[0], Document)
-        readme_content = data[0].page_content
-        api_start_index = readme_content.find("API Documents")
-        api_content = readme_content[api_start_index:] if api_start_index != -1 else ""
+        try:
+            # Initialize the retriever
+            markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
+            loader = UnstructuredMarkdownLoader(markdown_path)
+            data = loader.load()
+            assert len(data) == 1
+            assert isinstance(data[0], Document)
+            readme_content = data[0].page_content
+            api_start_index = readme_content.find("API Documents")
+            api_content = readme_content[api_start_index:] if api_start_index != -1 else ""
 
-        api_document = Document(page_content=api_content)
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-        all_splits = text_splitter.split_documents([api_document])
-        vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
-        self.retriever = vector_store.as_retriever()
+            api_document = Document(page_content=api_content)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+            all_splits = text_splitter.split_documents([api_document])
+            vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+            self.retriever = vector_store.as_retriever()
+
+        except Exception as e:
+            print(f"[Warning] Failed to load or process markdown file: {e}")
+            # fallback：使用一个空的 retriever
+            self.retriever = Chroma.from_documents(documents=[], embedding=self.embeddings).as_retriever()
 
         contextualize_q_system_prompt = (
             "Given a GUI Testing history which might reference context in the GUI Testing history, "
