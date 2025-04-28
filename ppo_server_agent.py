@@ -103,8 +103,10 @@ class PPOAgentServer:
             markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
             loader = UnstructuredMarkdownLoader(markdown_path)
             data = loader.load()
+
             assert len(data) == 1
             assert isinstance(data[0], Document)
+
             readme_content = data[0].page_content
             api_start_index = readme_content.find("API Documents")
             api_content = readme_content[api_start_index:] if api_start_index != -1 else ""
