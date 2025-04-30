@@ -101,7 +101,7 @@ class PPOAgentServer:
 
         try:
             # Initialize the retriever
-            markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
+            markdown_path = "./Document.md"
             loader = UnstructuredMarkdownLoader(markdown_path)
             data = loader.load()
 
