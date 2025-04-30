@@ -78,7 +78,7 @@ async def step(req: StepRequest):
     response = ppo_agent.step(task_id, obs)
     return {"task_id": task_id, "status": "ok", "action": int(response)}
 
-
+'''
 @app.post("/rag-step")
 async def rag_step(req: StepRequest):
     task_id = req.task_id
@@ -89,7 +89,7 @@ async def rag_step(req: StepRequest):
 
     response = ppo_agent.step(task_id, obs)
     return {"task_id": task_id, "status": "ok", "action": int(response)}
-
+'''
 
 @app.post("/generate", response_class=PlainTextResponse)
 def generate_text(request: GenerationRequest):

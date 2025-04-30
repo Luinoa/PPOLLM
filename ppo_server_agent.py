@@ -4,6 +4,7 @@ import uuid
 from typing import Dict, Optional, List, Union, Any, Tuple
 
 import torch
+'''
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
@@ -15,7 +16,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
+'''
 from torch.utils.tensorboard import SummaryWriter
 
 from llm_policy import LLMAgent
@@ -120,7 +121,6 @@ class PPOAgentServer:
 
         except Exception as e:
         print(f"[Warning] Failed to load or process markdown file: {e}")
-        '''
         # fallback：使用一个空的 retriever
         self.retriever = Chroma.from_documents(documents=[], embedding=self.embeddings).as_retriever()
 
@@ -146,7 +146,7 @@ class PPOAgentServer:
         question_answer_chain = create_stuff_documents_chain(self.agent, qa_prompt)
 
         self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
-
+        '''
         self.global_step = 1
 
         self.agent = LLMAgent(normalization_mode="word",
@@ -216,7 +216,7 @@ class PPOAgentServer:
         if session_id not in self.store:
             self.store[session_id] = ChatMessageHistory()
         return self.store[session_id]
-
+    '''
     def rag_step(self, task_id: str, obs: Union[str, List[str]]) -> Tuple[str, Any]:
         """
         Take one RAG step given chat history. Returns the next action.
@@ -257,17 +257,8 @@ class PPOAgentServer:
             "value": value
         }
 
-        '''
-        Optionally combine RAG result with sampled action
-        This depends on how you intend to use the RAG result
-        combined_result = {
-            "action": action_sampled,
-            "rag_result": rag_result,
-        }
-        '''
-
         return action_sampled
-
+    '''
     def step(
             self, task_id: str, obs: Union[str, List[str]]
     ) -> Tuple[str, Any]:
