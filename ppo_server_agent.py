@@ -120,8 +120,6 @@ class PPOAgentServer:
 
         except Exception as e:
             print(f"[Warning] Failed to load or process markdown file: {e}")
-            # fallback：使用一个空的 retriever
-            self.retriever = Chroma.from_documents(documents=["api_document"], embedding=self.embeddings).as_retriever()
 
         contextualize_q_system_prompt = (
             "Given a GUI Testing history which might reference context in the GUI Testing history, "
