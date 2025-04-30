@@ -96,6 +96,12 @@ class PPOAgentServer:
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
+        self.agent = LLMAgent(normalization_mode="word",
+                              batch_size=args.forward_batch,
+                              inference=args.inference,
+                              base_model=args.model,
+                              lora_r=args.lora_rank,
+                              )
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
 
@@ -145,13 +151,6 @@ class PPOAgentServer:
         self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
 
         self.global_step = 1
-
-        self.agent = LLMAgent(normalization_mode="word",
-                              batch_size=args.forward_batch,
-                              inference=args.inference,
-                              base_model=args.model,
-                              lora_r=args.lora_rank,
-                              )
 
         if not self.inference:
             self.writer = SummaryWriter(f"{args.record_path}")
