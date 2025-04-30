@@ -96,10 +96,8 @@ class PPOAgentServer:
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
-        '''
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
-
 
         try:
             # Initialize the retriever
@@ -121,9 +119,9 @@ class PPOAgentServer:
             self.retriever = vector_store.as_retriever()
 
         except Exception as e:
-        print(f"[Warning] Failed to load or process markdown file: {e}")
-        # fallback：使用一个空的 retriever
-        self.retriever = Chroma.from_documents(documents=[], embedding=self.embeddings).as_retriever()
+            print(f"[Warning] Failed to load or process markdown file: {e}")
+            # fallback：使用一个空的 retriever
+            self.retriever = Chroma.from_documents(documents=["api_document"], embedding=self.embeddings).as_retriever()
 
         contextualize_q_system_prompt = (
             "Given a GUI Testing history which might reference context in the GUI Testing history, "
@@ -147,7 +145,7 @@ class PPOAgentServer:
         question_answer_chain = create_stuff_documents_chain(self.agent, qa_prompt)
 
         self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
-        '''
+
         self.global_step = 1
 
         self.agent = LLMAgent(normalization_mode="word",
@@ -213,7 +211,7 @@ class PPOAgentServer:
             session.status = "pending"
             return True
 
-    '''
+
     def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
         if session_id not in self.store:
             self.store[session_id] = ChatMessageHistory()
@@ -260,7 +258,7 @@ class PPOAgentServer:
         }
 
         return action_sampled
-    '''
+
     def step(
             self, task_id: str, obs: Union[str, List[str]]
     ) -> Tuple[str, Any]:
