@@ -80,7 +80,7 @@ async def step(req: StepRequest):
 
 
 @app.post("/rag-step")
-async def step(req: StepRequest):
+async def rag_step(req: StepRequest):
     task_id = req.task_id
     obs = req.obs
 
