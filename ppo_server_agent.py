@@ -96,10 +96,11 @@ class PPOAgentServer:
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
+        '''
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
 
-        '''
+
         try:
             # Initialize the retriever
             markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
@@ -212,11 +213,12 @@ class PPOAgentServer:
             session.status = "pending"
             return True
 
+    '''
     def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
         if session_id not in self.store:
             self.store[session_id] = ChatMessageHistory()
         return self.store[session_id]
-    '''
+
     def rag_step(self, task_id: str, obs: Union[str, List[str]]) -> Tuple[str, Any]:
         """
         Take one RAG step given chat history. Returns the next action.
