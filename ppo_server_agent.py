@@ -9,7 +9,7 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_community.document_loaders import UnstructuredMarkdownLoader, TextLoader
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -105,14 +105,25 @@ class PPOAgentServer:
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.store = {}
 
-        # Initialize the retriever
         markdown_path = "./Document.md"
-        loader = UnstructuredMarkdownLoader(markdown_path)
-        data = loader.load()
 
-        assert len(data) == 1
-        assert isinstance(data[0], Document)
+        # 尝试用 UnstructuredMarkdownLoader（带 NLP 功能）
+        try:
+            loader = UnstructuredMarkdownLoader(markdown_path)
+            data = loader.load()
 
+            assert len(data) == 1
+            assert isinstance(data[0], Document)
+            print("[INFO] Loaded using UnstructuredMarkdownLoader")
+
+        except Exception as e:
+            print(f"[WARNING] Failed to use UnstructuredMarkdownLoader: {e}")
+            print("[INFO] Falling back to TextLoader without NLP parsing")
+
+            loader = TextLoader(markdown_path)
+            data = loader.load()
+
+        # 后续流程不变
         readme_content = data[0].page_content
         api_start_index = readme_content.find("API Documents")
         api_content = readme_content[api_start_index:] if api_start_index != -1 else ""
