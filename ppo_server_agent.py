@@ -5,6 +5,7 @@ from typing import Dict, Optional, List, Union, Any, Tuple
 
 import torch
 
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
@@ -102,7 +103,8 @@ class PPOAgentServer:
                               base_model=args.model,
                               lora_r=args.lora_rank,
                               )
-        self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+        #self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         self.store = {}
 
         markdown_path = "./Document.md"
