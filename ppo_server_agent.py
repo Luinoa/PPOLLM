@@ -141,7 +141,9 @@ class PPOAgentServer:
             "formulate a standalone question which can be understood without the GUI Testing history. Do NOT answer the question."
         )
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
-            [("system", contextualize_q_system_prompt), MessagesPlaceholder("chat_history")]
+            [("system", contextualize_q_system_prompt),
+             MessagesPlaceholder("chat_history"),
+             ("human", "{input}"),]
         )
         self.history_aware_retriever = create_history_aware_retriever(self.agent, self.retriever,
                                                                       contextualize_q_prompt)
@@ -154,7 +156,9 @@ class PPOAgentServer:
             "Please provide me with the polished obs,not the answer."
             "\n\n{context}"
         )
-        qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("chat_history")])
+        qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt),
+                                                      MessagesPlaceholder("chat_history"),
+                                                       ("human", "{input}"),])
         question_answer_chain = create_stuff_documents_chain(self.agent, qa_prompt)
 
         self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
@@ -235,6 +239,7 @@ class PPOAgentServer:
         conversational_rag_chain = RunnableWithMessageHistory(
             self.rag_chain,
             self.get_session_history,
+            input_messages_key="input",
             history_messages_key="chat_history",
             output_messages_key="polished_obs",
             )
