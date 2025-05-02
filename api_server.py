@@ -79,7 +79,7 @@ async def step(req: StepRequest):
     return {"task_id": task_id, "status": "ok", "action": int(response)}
 
 
-@app.post("/rag-step")
+@app.post("/rag_step")
 async def rag_step(req: StepRequest):
     task_id = req.task_id
     obs = req.obs
