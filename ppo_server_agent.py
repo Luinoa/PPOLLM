@@ -104,7 +104,7 @@ class PPOAgentServer:
                               lora_r=args.lora_rank,
                               )
         #self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.embeddings = HuggingFaceEmbeddings(model_name="/home/soft_stu/all-MiniLM-L6-v2_local")
         self.store = {}
 
         markdown_path = "./Document.md"
