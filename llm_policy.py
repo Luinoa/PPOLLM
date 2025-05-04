@@ -82,7 +82,7 @@ class LLMAgent(nn.Module):
             if not inference:
                 self.critic = self._init_critic().to(self.device)
 
-        if use_data_parallel and torch.cuda.device_count() > 1:
+        if data_parallel and torch.cuda.device_count() > 1:
             self.actor = nn.DataParallel(self.actor)
             if not inference:
                 self.critic = nn.DataParallel(self.critic)
