@@ -174,7 +174,7 @@ if __name__ == "__main__":
     parser.add_argument('--forward-batch', action='store', type=int, default=1,
                         help='The size of batches in each forward pass')  # Forward in parallel, very memory sensitive
 
-    parser.add_argument('--training-batch', action='store', type=int, default=4,
+    parser.add_argument('--training-batch', action='store', type=int, default=32,
                         help='The size of training batches per session')  # How many samples to train on per session (or per task)
     parser.add_argument("--update-epoches", type=int, default=1,
                         help="the number of epochs to update the policy")
@@ -192,6 +192,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--model", action="store", type=str, default="Qwen/Qwen2-0.5B",
                         help="The model to use for inference")
+    parser.add_argument("--embedding-model", action="store", type=str, default="BAAI/bge-m3",
+                        help="The embedding model to use")
 
     args = parser.parse_args()
 

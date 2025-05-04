@@ -1,11 +1,12 @@
 # ppo_server_agent.py
 import threading
 import uuid
+import os
 from typing import Dict, Optional, List, Union, Any, Tuple
 
 import torch
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
@@ -103,8 +104,15 @@ class PPOAgentServer:
                               base_model=args.model,
                               lora_r=args.lora_rank,
                               )
-        #self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
-        self.embeddings = HuggingFaceEmbeddings(model_name="/home/soft_stu/all-MiniLM-L6-v2_local")
+
+
+        embedding_model_path = f"weights/{args.embedding_model}"
+        if not os.path.exists(embedding_model_path):
+            os.makedirs(embedding_model_path)
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=args.embedding_model,
+            cache_folder=f"weights/{args.embedding_model}",
+        )
         self.store = {}
 
         markdown_path = "./Document.md"
