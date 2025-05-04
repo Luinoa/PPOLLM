@@ -333,7 +333,14 @@ class PPOAgentServer:
                     # Perform PPO update and save
                     if not self.inference:
                         tmp_info = self.trainer.update(experiences, self.global_step)
-                        print(f"[INFO] Training step {self.global_step}: {tmp_info:.8f}")
+
+                        def format_info(info: dict, precision=6):
+                            return ', '.join(
+                                f"{k}={v:.{precision}f}" if isinstance(v, float) else f"{k}={v}"
+                                for k, v in info.items()
+                            )
+                        # Log the training step information
+                        print(f"[INFO] Training step {self.global_step}: {format_info(tmp_info)}")
                         self.agent.save(self.global_step, self.args.record_path)
                         self.global_step += 1
                         self.writer.flush()
