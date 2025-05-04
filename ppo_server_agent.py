@@ -107,12 +107,7 @@ class PPOAgentServer:
 
 
         embedding_model_path = f"weights/{args.embedding_model}"
-        if not os.path.exists(embedding_model_path):
-            os.makedirs(embedding_model_path)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=args.embedding_model,
-            cache_folder=f"weights/{args.embedding_model}",
-        )
+        self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model_path)
         self.store = {}
 
         markdown_path = "./Document.md"
