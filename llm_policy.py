@@ -29,13 +29,15 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class LLMAgent(nn.Module):
-    def __init__(self, normalization_mode='word',
+    def __init__(self,
+                 normalization_mode='word',
                  load_path=None,
                  load_8bit=False,
                  batch_size=1,
                  inference=False,
                  base_model=None,
                  lora_r = 8,
+                 data_parallel = False,
                  ):
         super().__init__()
 
@@ -79,6 +81,12 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor().to(self.device)
             if not inference:
                 self.critic = self._init_critic().to(self.device)
+
+        if use_data_parallel and torch.cuda.device_count() > 1:
+            self.actor = nn.DataParallel(self.actor)
+            if not inference:
+                self.critic = nn.DataParallel(self.critic)
+
         if inference:
             self.actor.eval()
 

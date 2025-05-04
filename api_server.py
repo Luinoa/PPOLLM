@@ -195,6 +195,12 @@ if __name__ == "__main__":
     parser.add_argument("--embedding-model", action="store", type=str, default="BAAI/bge-m3",
                         help="The embedding model to use")
 
+    parser.add_argument("--data-parallel", action="store_true", dest="data_parallel",
+                        help="Use data parallelism for model training")
+    parser.add_argument("--no-data-parallel", action="store_false", dest="data_parallel",
+                        help="Do not use data parallelism for model training")
+    parser.set_defaults(data_parallel=False)
+
     args = parser.parse_args()
 
     # Instantiate the PPO agent with the LLM agent (inference mode by default)
