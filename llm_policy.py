@@ -38,7 +38,6 @@ class LLMAgent(nn.Module):
                  inference=False,
                  base_model=None,
                  lora_r = 8,
-                 data_parallel = False,
                  ):
         super().__init__()
 
@@ -82,11 +81,6 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor().to(self.device)
             if not inference:
                 self.critic = self._init_critic().to(self.device)
-
-        if data_parallel and torch.cuda.device_count() > 1:
-            self.actor = nn.DataParallel(self.actor)
-            if not inference:
-                self.critic = nn.DataParallel(self.critic)
 
         if inference:
             self.actor.eval()
