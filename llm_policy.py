@@ -148,7 +148,7 @@ class LLMAgent(nn.Module):
         critic = Critic(self.actor, self.tokenizer)
         if critic_weights is not None:
             ckpt = torch.load(critic_weights, map_location=self.device)
-            # critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
+            critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
             critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
             critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
         return critic
@@ -163,7 +163,7 @@ class LLMAgent(nn.Module):
         self.actor.save_pretrained(os.path.join(exp_path, "actor"))
         # save critic
         torch.save({
-            # "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
+            "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
             "v_head_mlp2": self.critic.v_head_mlp2.state_dict(),
             "v_head_mlp3": self.critic.v_head_mlp3.state_dict()
         }, os.path.join(os.path.join(exp_path, "critic"), "critic.pth"))
@@ -351,7 +351,7 @@ class Critic(nn.Module):
 
         hidden_states = transformer_outputs[1][-1][:, -1, :].float()
 
-        # x = self.relu(self.v_head_mlp1(hidden_states))
-        x = self.relu(self.v_head_mlp2(hidden_states))
+        x = self.relu(self.v_head_mlp1(hidden_states))
+        x = self.relu(self.v_head_mlp2(x))
         values = self.v_head_mlp3(x).squeeze(-1)
         return values

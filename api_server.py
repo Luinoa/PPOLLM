@@ -196,7 +196,7 @@ if __name__ == "__main__":
                         help="Run in training mode")
     parser.set_defaults(inference=True)
 
-    parser.add_argument("--model", action="store", type=str, default="Qwen/Qwen2-0.5B",
+    parser.add_argument("--model", action="store", type=str, default="Qwen/Qwen3-0.6B",
                         help="The model to use for inference")
     parser.add_argument("--embedding-model", action="store", type=str, default="BAAI/bge-m3",
                         help="The embedding model to use")
