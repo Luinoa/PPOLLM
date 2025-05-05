@@ -86,23 +86,25 @@ class LLMAgent(nn.Module):
             self.actor.eval()
 
     def _init_llm(self):
+        # Load and auto‑shard the base model across all available devices
         model = AutoModelForCausalLM.from_pretrained(
             self.base_model,
             torch_dtype=torch.float16,
             load_in_8bit=self.load_8bit,
-            device_map="auto",
+            device_map="auto",  # accelerate hooks will place each layer on the correct GPU
             cache_dir=os.path.join(root, f'weights/{self.base_model}')
         )
 
-        if not self.load_8bit:
-            model.half().to(self.device)
-        else:
+        # If using 8‑bit adapters, prepare them for k‑bit training
+        if self.load_8bit:
             model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
+
     def _init_actor(self, lora_weights=None):
         if lora_weights is None:
+            # Configure and attach a new LoRA adapter
             config = LoraConfig(
                 r=self.lora_r,
                 lora_alpha=self.lora_alpha,
@@ -112,29 +114,25 @@ class LLMAgent(nn.Module):
                 task_type=TaskType.CAUSAL_LM,
             )
             model = get_peft_model(self.llm, config)
-
             model.print_trainable_parameters()
 
+            # Ensure save_pretrained only writes LoRA weights
             old_state_dict = model.state_dict
             model.state_dict = (
-                lambda self, *_, **__: get_peft_model_state_dict(
-                    self, old_state_dict()
-                )
+                lambda self, *_, **__: get_peft_model_state_dict(self, old_state_dict())
             ).__get__(model, type(model))
         else:
+            # Load existing LoRA adapter without moving devices
             model = PeftModel.from_pretrained(
                 self.llm,
                 lora_weights,
                 torch_dtype=torch.float16,
+                device_map="auto"
             )
 
+        # If using Torch 2.0+ compilation on non-Windows
         if torch.__version__ >= "2" and sys.platform != "win32":
             model = torch.compile(model)
-
-        if not self.load_8bit:
-            model.half()
-        else:
-            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
