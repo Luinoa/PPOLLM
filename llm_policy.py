@@ -1,4 +1,5 @@
 import sys
+from contextlib import nullcontext
 
 import torch
 import transformers
@@ -215,7 +216,7 @@ class LLMAgent(nn.Module):
                 action_list_length.append(action_len)
 
                 # 用 past_key_values 推理 action（不再缓存）
-                with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
+                with torch.no_grad() if self.inference or no_grad else nullcontext():
                     outputs = self.actor(
                         input_ids=action_input_ids,
                         past_key_values=past_key_values,

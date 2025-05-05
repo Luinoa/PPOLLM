@@ -1,4 +1,6 @@
 # ppo_trainer.py
+from contextlib import nullcontext
+
 import torch
 import numpy as np
 import torch.nn as nn
@@ -98,86 +100,92 @@ class PPOTrainer:
         is_warmup = False
         if global_step <= args.warmup_updates:
             is_warmup = True
+        with torch.autograd.detect_anomaly() if args.detect_anomaly else nullcontext():
+            for i in range(args.update_epoches):
+                if kl_explode:
+                    break
+                # Value Update
+                self.value_optimizer.zero_grad()
+                for start in range(0, batch_size, args.value_minibatch_size):
+                    end = start + args.value_minibatch_size
+                    mb_inds = b_inds[start:end]
+                    newvalue = self.agent.get_value([b_obs[i]["prompt"] for i in mb_inds]).view(-1)
+                    if args.clip_vloss:
+                        v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                        v_clipped = b_values[mb_inds] + torch.clamp(
+                            newvalue - b_values[mb_inds], -args.clip_coef, args.clip_coef
+                        )
+                        v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+                        v_loss = 0.5 * torch.max(v_loss_unclipped, v_loss_clipped).mean()
+                    else:
+                        v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
-        for i in range(args.update_epoches):
-            if kl_explode:
-                break
-            # Value Update
-            self.value_optimizer.zero_grad()
-            for start in range(0, batch_size, args.value_minibatch_size):
-                end = start + args.value_minibatch_size
-                mb_inds = b_inds[start:end]
-                newvalue = self.agent.get_value([b_obs[i]["prompt"] for i in mb_inds]).view(-1)
-                if args.clip_vloss:
-                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
-                    v_clipped = b_values[mb_inds] + torch.clamp(
-                        newvalue - b_values[mb_inds], -args.clip_coef, args.clip_coef
-                    )
-                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
-                    v_loss = 0.5 * torch.max(v_loss_unclipped, v_loss_clipped).mean()
-                else:
-                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
-
-                loss = v_loss * args.vf_coef
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
-                self.value_optimizer.step()
-
-                del newvalue, v_loss_unclipped, v_clipped, v_loss_clipped
-                torch.cuda.empty_cache()
-
-            if is_warmup:
-                continue
-
-            # Policy Update
-            self.policy_optimizer.zero_grad()
-            for start in range(0, batch_size, args.policy_minibatch_size):
-                end = start + args.policy_minibatch_size
-                mb_inds = b_inds[start:end]
-
-                # Gradient accumulation
-                if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                    total_approx_kl = torch.tensor(0.0, device=self.device)
-
-                # Get action values
-                _, newlogprob, entropy, _ = self.agent.get_action_and_value(
-                    [b_obs[i] for i in mb_inds], b_actions[mb_inds], return_value=False
-                )
-
-                logratio = newlogprob - b_logprobs[mb_inds]
-                ratio = logratio.exp()
-
-                with torch.no_grad():
-                    old_approx_kl = (-logratio).mean()
-                    approx_kl = ((ratio - 1) - logratio).mean()
-                    total_approx_kl += approx_kl / args.gradient_checkpointing_steps
-                    clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
-
-                mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv and len(mb_inds) > 1:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-
-                pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-                entropy_loss = entropy.mean()
-                loss = pg_loss - args.ent_coef * entropy_loss
-                loss /= args.gradient_checkpointing_steps  # normalize for accumulation
-
-                loss.backward()
-
-                policy_update_steps += 1
-                if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                    if args.target_kl is not None and total_approx_kl > args.target_kl:
-                        kl_explode = True
-                        policy_update_steps -= args.gradient_checkpointing_steps
-                        break  # early stopping
-
+                    loss = v_loss * args.vf_coef
+                    loss.backward()
                     nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
-                    self.policy_optimizer.step()
+                    self.value_optimizer.step()
+                    print('vloss:', v_loss.item())
 
-                del newlogprob, logratio, ratio, mb_advantages, pg_loss1, pg_loss2
-                torch.cuda.empty_cache()
+                    self.value_optimizer.zero_grad()
+
+                    del newvalue, v_loss_unclipped, v_clipped, v_loss_clipped
+                    torch.cuda.empty_cache()
+
+                if is_warmup:
+                    continue
+
+                # Policy Update
+                self.policy_optimizer.zero_grad()
+                for start in range(0, batch_size, args.policy_minibatch_size):
+                    end = start + args.policy_minibatch_size
+                    mb_inds = b_inds[start:end]
+
+                    # Gradient accumulation
+                    if policy_update_steps % args.gradient_checkpointing_steps == 0:
+                        total_approx_kl = torch.tensor(0.0, device=self.device)
+
+                    # Get action values
+                    _, newlogprob, entropy, _ = self.agent.get_action_and_value(
+                        [b_obs[i] for i in mb_inds], b_actions[mb_inds], return_value=False
+                    )
+
+                    logratio = newlogprob - b_logprobs[mb_inds]
+                    ratio = logratio.exp()
+
+                    with torch.no_grad():
+                        old_approx_kl = (-logratio).mean()
+                        approx_kl = ((ratio - 1) - logratio).mean()
+                        total_approx_kl += approx_kl / args.gradient_checkpointing_steps
+                        clipfracs.append(((ratio - 1.0).abs() > args.clip_coef).float().mean().item())
+
+                    mb_advantages = b_advantages[mb_inds]
+                    if args.norm_adv and len(mb_inds) > 1:
+                        mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                    pg_loss1 = -mb_advantages * ratio
+                    pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                    entropy_loss = entropy.mean()
+                    loss = pg_loss - args.ent_coef * entropy_loss
+                    loss /= args.gradient_checkpointing_steps  # normalize for accumulation
+
+                    loss.backward()
+
+                    policy_update_steps += 1
+                    if policy_update_steps % args.gradient_checkpointing_steps == 0:
+                        if args.target_kl is not None and total_approx_kl > args.target_kl:
+                            kl_explode = True
+                            policy_update_steps -= args.gradient_checkpointing_steps
+                            break  # early stopping
+
+                        nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
+                        self.policy_optimizer.step()
+                        print('policy_loss:', pg_loss.item(), 'kl:', total_approx_kl.item(), 'entropy:', entropy_loss.item())
+
+                        self.policy_optimizer.zero_grad()
+
+                    del newlogprob, logratio, ratio, mb_advantages, pg_loss1, pg_loss2
+                    torch.cuda.empty_cache()
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)

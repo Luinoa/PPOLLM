@@ -137,7 +137,7 @@ if __name__ == "__main__":
                         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
                         help="the lambda for the general advantage estimation")
-    parser.add_argument("--policy-minibatch-size", type=int, default=1,
+    parser.add_argument("--policy-minibatch-size", type=int, default=32,
                         help="the number of mini-batches")
     parser.add_argument("--value-minibatch-size", type=int, default=4,
                         help="the number of mini-batches")
@@ -160,7 +160,7 @@ if __name__ == "__main__":
                         help="coefficient of the value function")
     parser.add_argument("--max-grad-norm", type=float, default=0.5,
                         help="the maximum norm for the gradient clipping")
-    parser.add_argument("--target-kl", type=float, default=None,
+    parser.add_argument("--target-kl", type=float, default=0.02,
                         help="the target KL divergence threshold")
 
     parser.add_argument('--gradient-checkpointing-steps', action='store', type=int, default=8,
@@ -180,6 +180,12 @@ if __name__ == "__main__":
                         help="the number of epochs to update the policy")
     parser.add_argument("--warmup-updates", action="store", type=int, default=0,
                         help="The number of warmup updates before training starts")  # Only for training critic
+
+    parser.add_argument("--detect-anomaly", dest="detect_anomaly", action="store_true",
+                        help="Enable anomaly detection")
+    parser.add_argument("--no-detect-anomaly", dest="detect_anomaly", action="store_false",
+                        help="Disable anomaly detection")
+    parser.set_defaults(detect_anomaly=False)
 
     parser.add_argument("--lora-rank", action="store", type=int, default=8,
                         help="The rank of LoRA layers")
