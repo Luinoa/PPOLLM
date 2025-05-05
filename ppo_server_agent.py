@@ -103,7 +103,6 @@ class PPOAgentServer:
                               inference=args.inference,
                               base_model=args.model,
                               lora_r=args.lora_rank,
-                              data_parallel=args.data_parallel,
                               )
 
 
