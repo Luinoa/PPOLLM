@@ -104,7 +104,7 @@ class LLMAgent(nn.Module):
 
     def _init_actor(self, lora_weights=None):
         if lora_weights is None:
-            # Configure and attach a new LoRA adapter
+            # 1) Attach a new LoRA adapter to the already‑sharded self.llm
             config = LoraConfig(
                 r=self.lora_r,
                 lora_alpha=self.lora_alpha,
@@ -116,21 +116,35 @@ class LLMAgent(nn.Module):
             model = get_peft_model(self.llm, config)
             model.print_trainable_parameters()
 
-            # Ensure save_pretrained only writes LoRA weights
+            # ensure save_pretrained writes only LoRA weights
             old_state_dict = model.state_dict
             model.state_dict = (
                 lambda self, *_, **__: get_peft_model_state_dict(self, old_state_dict())
             ).__get__(model, type(model))
         else:
-            # Load existing LoRA adapter without moving devices
+            # load existing LoRA adapter onto the sharded base model
             model = PeftModel.from_pretrained(
                 self.llm,
                 lora_weights,
                 torch_dtype=torch.float16,
-                device_map="auto"
+                device_map="auto",
             )
 
-        # If using Torch 2.0+ compilation on non-Windows
+            # 2) Re‑dispatch the PEFT’d model so that LoRA weights
+            #    land on the same GPUs as their corresponding base layers:
+        from accelerate import infer_auto_device_map, dispatch_model
+
+        # auto‑infer a device_map for the combined model
+        device_map = infer_auto_device_map(
+            model,
+            # you may want to exclude tiny modules from splitting:
+            no_split_module_classes=["LoraLayer"],
+            dtype=torch.float16,
+        )
+        # re‑shard every submodule according to that map
+        model = dispatch_model(model, device_map=device_map)
+
+        # 3) (optional) torch.compile for PyTorch 2.0+
         if torch.__version__ >= "2" and sys.platform != "win32":
             model = torch.compile(model)
 
