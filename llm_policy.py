@@ -12,7 +12,7 @@ from peft import (
 )
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, TaskType
-from accelerate import Accelerator, infer_auto_device_map, dispatch_model
+from accelerate import Accelerator, infer_auto_device_map
 
 import os
 import torch.nn as nn
@@ -143,8 +143,6 @@ class LLMAgent(nn.Module):
             no_split_module_classes=["LoraLayer"],
             dtype=torch.float16,
         )
-        # re‑shard every submodule according to that map
-        model = dispatch_model(model, device_map=device_map)
 
         """
         # 3) (optional) torch.compile for PyTorch 2.0+
@@ -167,7 +165,6 @@ class LLMAgent(nn.Module):
             no_split_module_classes=["LoraLayer"],
             dtype=torch.float16,
         )
-        critic = dispatch_model(critic, device_map=device_map)
 
         return critic
 
@@ -198,7 +195,6 @@ class LLMAgent(nn.Module):
         assert not self.inference
         # 1) 不手动 .to()，直接让 model 自己处理数据移动
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
-        # dispatch_model 包装的模型会在内部 scatter inputs
         value = self.critic(
             inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
