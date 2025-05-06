@@ -147,9 +147,11 @@ class LLMAgent(nn.Module):
         # re‑shard every submodule according to that map
         model = dispatch_model(model, device_map=device_map)
 
+        """
         # 3) (optional) torch.compile for PyTorch 2.0+
         if torch.__version__ >= "2" and sys.platform != "win32":
             model = torch.compile(model)
+        """
 
         return model
 
