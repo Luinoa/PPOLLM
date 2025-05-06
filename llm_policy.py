@@ -177,8 +177,11 @@ class LLMAgent(nn.Module):
         return value
 
     def get_action_and_value(self, text_obs, action=None, return_value=True, no_grad=False):
-        prompt = [o["prompt"] for o in text_obs]
+        system_prompt = [o["prompt"] for o in text_obs]
+        question = [o["question"] for o in text_obs]
         action_list = [o["action"] for o in text_obs]
+
+        prompt = [f"{s}{q}" for s, q in zip(system_prompt, question)]
 
         prompt_nums = len(prompt)
         action_nums = [len(item) for item in action_list]
@@ -262,7 +265,7 @@ class LLMAgent(nn.Module):
         entroy = torch.cat(entroy)
 
         if return_value and not self.inference:
-            return action, log_probs, entroy, self.get_value(prompt)
+            return action, log_probs, entroy, self.get_value(system_prompt)
         else:
             return action, log_probs, entroy, None
 
