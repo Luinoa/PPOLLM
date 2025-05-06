@@ -12,7 +12,7 @@ from peft import (
 )
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, TaskType
-from accelerate import Accelerator
+from accelerate import Accelerator, infer_auto_device_map, dispatch_model
 
 import os
 import torch.nn as nn
@@ -133,9 +133,8 @@ class LLMAgent(nn.Module):
                 device_map="auto",
             )
 
-            # 2) Re‑dispatch the PEFT’d model so that LoRA weights
-            #    land on the same GPUs as their corresponding base layers:
-        from accelerate import infer_auto_device_map, dispatch_model
+        # 2) Re‑dispatch the PEFT’d model so that LoRA weights
+        #    land on the same GPUs as their corresponding base layers:
 
         # auto‑infer a device_map for the combined model
         device_map = infer_auto_device_map(
@@ -162,6 +161,14 @@ class LLMAgent(nn.Module):
             critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
             critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
             critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
+
+        device_map = infer_auto_device_map(
+            critic,
+            no_split_module_classes=["LoraLayer"],
+            dtype=torch.float16,
+        )
+        critic = dispatch_model(critic, device_map=device_map)
+
         return critic
 
     def save(self, epoch, exp_path):
@@ -191,12 +198,11 @@ class LLMAgent(nn.Module):
         assert not self.inference
         # 1) 不手动 .to()，直接让 model 自己处理数据移动
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
-        with self.actor.disable_adapter():
-            # dispatch_model 包装的模型会在内部 scatter inputs
-            value = self.critic(
-                inputs["input_ids"],
-                attention_mask=inputs["attention_mask"]
-            )
+        # dispatch_model 包装的模型会在内部 scatter inputs
+        value = self.critic(
+            inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
+        )
         return value
 
     def get_action_and_value(self, text_obs, action=None, return_value=True, no_grad=False):
