@@ -12,6 +12,7 @@ from peft import (
 )
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, TaskType
+from accelerate import Accelerator
 
 import os
 import torch.nn as nn
@@ -51,6 +52,8 @@ class LLMAgent(nn.Module):
 
         self.batch_size = batch_size
 
+        self.accelerator = Accelerator()
+
         assert (
             self.base_model
         ), "Please specify a --base_model, e.g. --base_model='decapoda-research/llama-7b-hf'"
@@ -78,9 +81,9 @@ class LLMAgent(nn.Module):
         if load_path:
             self.load(load_path)
         else:
-            self.actor = self._init_actor().to(self.device)
+            self.actor = self.accelerator.prepare(self._init_actor())
             if not inference:
-                self.critic = self._init_critic().to(self.device)
+                self.critic = self.accelerator.prepare(self._init_critic())
 
         if inference:
             self.actor.eval()
@@ -179,14 +182,16 @@ class LLMAgent(nn.Module):
         lora_weights = os.path.join(exp_path, "actor")
         critic_weights = os.path.join(exp_path, "critic", "critic.pth")
 
-        self.actor = self._init_actor(lora_weights).to(self.device)
-        self.critic = self._init_critic(critic_weights).to(self.device)
+        self.actor = self.accelerator.prepare(self._init_actor(lora_weights))
+        self.critic = self.accelerator.prepare(self._init_critic(critic_weights))
 
     def get_value(self, x):
         assert not self.inference
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
-        input_ids = inputs["input_ids"].to(self.device)
-        attention_mask = inputs["attention_mask"].to(self.device)
+        # Send inputs to whatever device the actor lives on
+        actor_device = next(self.actor.parameters()).device
+        input_ids = inputs["input_ids"].to(actor_device)
+        attention_mask = inputs["attention_mask"].to(actor_device)
 
         with self.actor.disable_adapter():
             value = self.critic(input_ids, attention_mask=attention_mask)
@@ -196,93 +201,98 @@ class LLMAgent(nn.Module):
         prompt = [o["prompt"] for o in text_obs]
         action_list = [o["action"] for o in text_obs]
 
+        # Determine actor's device once
+        actor_device = next(self.actor.parameters()).device
+
+        all_action_logits = []
+        action_list_length = []
         prompt_nums = len(prompt)
         action_nums = [len(item) for item in action_list]
 
-        flat_action_list = [item for sublist in action_list for item in sublist]
-        all_action_logits = []
-        action_list_length = []
-
         for p, ac_list in zip(prompt, action_list):
-            # Tokenize prompt
-            prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False).to(self.device)
+            # Tokenize and send prompt to the actor's device
+            prompt_ids = self.tokenizer(
+                p, return_tensors="pt", add_special_tokens=False
+            ).to(actor_device)
 
-            # 先 forward prompt，获得 past_key_values
+            # Forward prompt -> past_key_values
             with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
                 prompt_outputs = self.actor(**prompt_ids, use_cache=True)
             past_key_values = prompt_outputs.past_key_values
 
             for action_str in ac_list:
-                # Tokenize action（不加 special tokens，保持拼接一致）
-                action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False).to(self.device)
-                action_input_ids = action_ids["input_ids"]  # [1, T]
+                # Tokenize and send action to the actor's device
+                action_ids = self.tokenizer(
+                    action_str, return_tensors="pt", add_special_tokens=False
+                ).to(actor_device)
+                action_input_ids = action_ids["input_ids"]
                 attention_mask = action_ids["attention_mask"]
 
                 action_len = attention_mask.sum().item()
                 action_list_length.append(action_len)
 
-                # 用 past_key_values 推理 action（不再缓存）
+                # Forward action using cached keys
                 with torch.no_grad() if self.inference or no_grad else nullcontext():
                     outputs = self.actor(
                         input_ids=action_input_ids,
                         past_key_values=past_key_values,
                         use_cache=False
                     )
-                    logits = torch.log_softmax(outputs.logits, dim=-1)  # [1, T, V]
+                    logits = torch.log_softmax(outputs.logits, dim=-1)
 
-                # Shift logits and compute log probs
-                shifted_logits = logits[:, :-1, :]  # ignore last prediction
-                shifted_input_ids = action_input_ids[:, 1:]  # target tokens
-                log_probs = torch.gather(shifted_logits, 2, shifted_input_ids[:, :, None]).squeeze(-1)  # [1, T-1]
+                # Shift and gather log‐probs
+                shifted_logits = logits[:, :-1, :]
+                shifted_input_ids = action_input_ids[:, 1:]
+                log_probs = torch.gather(
+                    shifted_logits, 2, shifted_input_ids[:, :, None]
+                ).squeeze(-1)
 
-                # Sum log probs (you can average later if needed)
-                total_log_prob = log_probs.sum(dim=1).squeeze(0)  # scalar
+                total_log_prob = log_probs.sum(dim=1).squeeze(0)
                 all_action_logits.append(total_log_prob)
 
-        # Convert to tensor
-        action_logits = torch.stack(all_action_logits).to(self.device)
-        action_list_length = torch.tensor(action_list_length).to(self.device)
+        # Stack and send to actor_device
+        action_logits = torch.stack(all_action_logits).to(actor_device)
+        action_list_length = torch.tensor(action_list_length).to(actor_device)
 
+        # Normalization
         if self.normalization_mode == 'token':
-            action_logits = action_logits / action_list_length.to(self.device)
+            action_logits = action_logits / action_list_length
         elif self.normalization_mode == 'word':
-            action_word_num = torch.tensor([len(action.split()) for action in flat_action_list]).to(self.device)
+            action_word_num = torch.tensor(
+                [len(a.split()) for a in sum(action_list, [])]
+            ).to(actor_device)
             action_logits = action_logits / action_word_num
         elif self.normalization_mode == 'sum':
-            action_logits = action_logits
+            pass
         else:
-            assert 1 == 2
+            raise ValueError("Unknown normalization_mode")
 
-        actions = []
-        log_probs = []
-        entroy = []
-
+        # Sample or use provided action
+        actions, log_probs, entropies = [], [], []
         for i in range(prompt_nums):
-            logits = action_logits[sum(action_nums[:i]):sum(action_nums[:i + 1])].reshape(-1, action_nums[i]).float()
-
-            probs = Categorical(logits=logits)
+            logits = action_logits[
+                     sum(action_nums[:i]): sum(action_nums[:i + 1])
+                     ].reshape(-1, action_nums[i]).float()
+            dist = Categorical(logits=logits)
 
             if action is None:
-                cur_action = probs.sample()[0]
-                cur_action = cur_action.view(-1)
-
+                a = dist.sample()[0]
+                a = a.view(-1)
             else:
-                cur_action = action
-
-            actions.append(cur_action)
-            log_probs.append(probs.log_prob(cur_action))
-            entroy.append(probs.entropy())
+                a = action[i].view(-1)
+            actions.append(a)
+            log_probs.append(dist.log_prob(a))
+            entropies.append(dist.entropy())
 
         action = torch.cat(actions)
         log_probs = torch.cat(log_probs)
-        entroy = torch.cat(entroy)
+        entropy = torch.cat(entropies)
 
         if return_value and not self.inference:
-            return action, log_probs, entroy, self.get_value(prompt)
+            return action, log_probs, entropy, self.get_value(prompt)
         else:
-            return action, log_probs, entroy, None
+            return action, log_probs, entropy, None
 
-    # Normally generate texts
     def generate_text(
             self,
             prompt,
@@ -292,10 +302,14 @@ class LLMAgent(nn.Module):
             do_sample=True,
             use_grad=False,
     ):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        # Determine actor's device
+        actor_device = next(self.actor.parameters()).device
+        inputs = self.tokenizer(
+            prompt, return_tensors="pt"
+        ).to(actor_device)
 
-        context_manager = torch.enable_grad() if use_grad or self.inference else torch.no_grad()
-        with context_manager:
+        ctx = torch.enable_grad() if use_grad or self.inference else torch.no_grad()
+        with ctx:
             outputs = self.actor.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
@@ -305,10 +319,7 @@ class LLMAgent(nn.Module):
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id
             )
-
-            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            return generated_text
-
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def clean(self):
         torch.cuda.empty_cache()
