@@ -94,7 +94,6 @@ class LLMAgent(nn.Module):
             self.base_model,
             torch_dtype=torch.float16,
             load_in_8bit=self.load_8bit,
-            device_map="auto",  # accelerate hooks will place each layer on the correct GPU
             cache_dir=os.path.join(root, f'weights/{self.base_model}')
         )
 
@@ -130,25 +129,7 @@ class LLMAgent(nn.Module):
                 self.llm,
                 lora_weights,
                 torch_dtype=torch.float16,
-                device_map="auto",
             )
-
-        # 2) Re‑dispatch the PEFT’d model so that LoRA weights
-        #    land on the same GPUs as their corresponding base layers:
-
-        # auto‑infer a device_map for the combined model
-        device_map = infer_auto_device_map(
-            model,
-            # you may want to exclude tiny modules from splitting:
-            no_split_module_classes=["LoraLayer"],
-            dtype=torch.float16,
-        )
-
-        """
-        # 3) (optional) torch.compile for PyTorch 2.0+
-        if torch.__version__ >= "2" and sys.platform != "win32":
-            model = torch.compile(model)
-        """
 
         return model
 
