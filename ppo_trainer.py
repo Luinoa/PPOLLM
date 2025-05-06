@@ -42,7 +42,7 @@ class PPOTrainer:
             with torch.no_grad():
                 next_value = self.agent.get_value(next_obs["prompt"]).reshape(1)
                 T = rewards.shape[0]
-                advantages = torch.zeros_like(rewards, device=self.device)
+                advantages = torch.zeros_like(rewards)
                 lastgaelam = 0
                 for t in reversed(range(T)):
                     if t == T - 1:
@@ -82,11 +82,11 @@ class PPOTrainer:
         np.random.shuffle(b_inds)
 
         kl_explode = False
-        total_approx_kl = torch.tensor(0.0, device=self.device)
-        v_loss = torch.tensor(0.0, device=self.device)
-        pg_loss = torch.tensor(0.0, device=self.device)
-        entropy_loss = torch.tensor(0.0, device=self.device)
-        old_approx_kl = torch.tensor(0.0, device=self.device)
+        total_approx_kl = torch.tensor(0.0)
+        v_loss = torch.tensor(0.0)
+        pg_loss = torch.tensor(0.0)
+        entropy_loss = torch.tensor(0.0)
+        old_approx_kl = torch.tensor(0.0)
         clipfracs = []
         policy_update_steps = 0
 
@@ -132,7 +132,7 @@ class PPOTrainer:
 
                 # Gradient accumulation
                 if policy_update_steps % args.gradient_checkpointing_steps == 0:
-                    total_approx_kl = torch.tensor(0.0, device=self.device)
+                    total_approx_kl = torch.tensor(0.0)
 
                 # Get action values
                 _, newlogprob, entropy, _ = self.agent.get_action_and_value(
