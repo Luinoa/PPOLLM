@@ -99,7 +99,6 @@ class PPOAgentServer:
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
         self.agent = LLMAgent(normalization_mode="word",
-                              batch_size=args.forward_batch,
                               inference=args.inference,
                               base_model=args.model,
                               lora_r=args.lora_rank,

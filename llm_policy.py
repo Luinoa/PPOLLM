@@ -32,7 +32,6 @@ class LLMAgent(nn.Module):
     def __init__(self, normalization_mode='word',
                  load_path=None,
                  load_8bit=False,
-                 batch_size=1,
                  inference=False,
                  base_model=None,
                  lora_r = 8,
@@ -46,8 +45,6 @@ class LLMAgent(nn.Module):
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
         self.lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-
-        self.batch_size = batch_size
 
         assert (
             self.base_model
