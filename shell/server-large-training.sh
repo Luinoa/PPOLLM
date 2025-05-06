@@ -8,5 +8,5 @@ export CUDA_VISIBLE_DEVICES=4,5,6,7
 python ./api_server.py \
 -t \
 -p 8001 \
---policy-minibatch-size 32 \
+--policy-minibatch-size 4 \
 --model Qwen/Qwen3-8B

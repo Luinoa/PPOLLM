@@ -171,8 +171,6 @@ if __name__ == "__main__":
 
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
-    parser.add_argument('--forward-batch', action='store', type=int, default=1,
-                        help='The size of batches in each forward pass')  # Forward in parallel, very memory sensitive
 
     parser.add_argument('--training-batch', action='store', type=int, default=32,
                         help='The size of training batches per session')  # How many samples to train on per session (or per task)
