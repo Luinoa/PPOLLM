@@ -315,7 +315,7 @@ class Critic(nn.Module):
             self.config, "hidden_size") else self.config.word_embed_proj_dim if hasattr(
             self.config, "word_embed_proj_dim") else self.config.n_embd
         self.v_head_mlp1 = nn.Linear(self.config.n_embd, 1024, bias=False)
-        self.v_head_mlp2 = nn.Linear(self.config.n_embd, 512, bias=False)
+        self.v_head_mlp2 = nn.Linear(1024, 512, bias=False)
         self.v_head_mlp3 = nn.Linear(512, 1, bias=False)
         self.relu = nn.ReLU()
         self.rwtranrsformer = base_model
