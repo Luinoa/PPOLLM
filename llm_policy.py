@@ -141,7 +141,7 @@ class LLMAgent(nn.Module):
         critic = Critic(self.actor, self.tokenizer)
         if critic_weights is not None:
             ckpt = torch.load(critic_weights, map_location=self.device)
-            # critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
+            critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
             critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
             critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
         return critic
@@ -314,7 +314,7 @@ class Critic(nn.Module):
         self.config.n_embd = self.config.hidden_size if hasattr(
             self.config, "hidden_size") else self.config.word_embed_proj_dim if hasattr(
             self.config, "word_embed_proj_dim") else self.config.n_embd
-        # self.v_head_mlp1 = nn.Linear(self.config.n_embd, 1024, bias=False)
+        self.v_head_mlp1 = nn.Linear(self.config.n_embd, 1024, bias=False)
         self.v_head_mlp2 = nn.Linear(self.config.n_embd, 512, bias=False)
         self.v_head_mlp3 = nn.Linear(512, 1, bias=False)
         self.relu = nn.ReLU()
@@ -344,7 +344,7 @@ class Critic(nn.Module):
 
         hidden_states = transformer_outputs[1][-1][:, -1, :].float()
 
-        # x = self.relu(self.v_head_mlp1(hidden_states))
-        x = self.relu(self.v_head_mlp2(hidden_states))
+        x = self.relu(self.v_head_mlp1(hidden_states))
+        x = self.relu(self.v_head_mlp2(x))
         values = self.v_head_mlp3(x).squeeze(-1)
         return values

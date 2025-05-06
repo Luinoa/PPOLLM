@@ -112,6 +112,7 @@ class PPOAgentServer:
         self.embeddings = HuggingFaceEmbeddings(
             model_name=args.embedding_model,
             cache_folder=f"weights/{args.embedding_model}",
+            model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"},
         )
         self.store = {}
 
