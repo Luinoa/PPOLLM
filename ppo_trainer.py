@@ -121,6 +121,9 @@ class PPOTrainer:
                 del newvalue, v_loss_unclipped, v_clipped, v_loss_clipped
                 torch.cuda.empty_cache()
 
+                print('vloss:', v_loss.item())
+                self.value_optimizer.zero_grad()
+
             if is_warmup:
                 continue
 
@@ -170,7 +173,9 @@ class PPOTrainer:
 
                     nn.utils.clip_grad_norm_(self.agent.parameters(), args.max_grad_norm)
                     self.policy_optimizer.step()
+                print('policy_loss:', pg_loss.item(), 'kl:', total_approx_kl.item(), 'entropy:', entropy_loss.item())
 
+                self.policy_optimizer.zero_grad()
                 del newlogprob, logratio, ratio, mb_advantages, pg_loss1, pg_loss2
                 torch.cuda.empty_cache()
 
