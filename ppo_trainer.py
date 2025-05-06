@@ -10,11 +10,6 @@ class PPOTrainer:
         self.args = args
         self.writer = writer
 
-        if torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
-
         self.policy_optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, self.agent.actor.parameters()),
             lr=args.policy_learning_rate, eps=1e-5, weight_decay=0
@@ -36,13 +31,13 @@ class PPOTrainer:
 
         for exp in experience_list:
             obs = exp['obs']  # [T, ...]
-            actions = exp['actions'].to(self.device)
-            logprobs = exp['logprobs'].to(self.device)
-            rewards = exp['rewards'].to(self.device)
-            dones = exp['dones'].to(self.device)
-            values = exp['values'].to(self.device)
+            actions = exp['actions']
+            logprobs = exp['logprobs']
+            rewards = exp['rewards']
+            dones = exp['dones']
+            values = exp['values']
             next_obs = exp['next_obs']
-            next_done = exp['next_done'].to(self.device)
+            next_done = exp['next_done']
 
             with torch.no_grad():
                 next_value = self.agent.get_value(next_obs["prompt"]).reshape(1)
