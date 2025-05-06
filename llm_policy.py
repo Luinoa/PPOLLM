@@ -58,17 +58,6 @@ class LLMAgent(nn.Module):
             self.base_model
         ), "Please specify a --base_model, e.g. --base_model='decapoda-research/llama-7b-hf'"
 
-        if torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
-
-        try:
-            if torch.backends.mps.is_available():
-                self.device = "mps"
-        except:  # noqa: E722
-            pass
-
         self.normalization_mode = normalization_mode
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
@@ -141,11 +130,7 @@ class LLMAgent(nn.Module):
             critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
             critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
 
-        device_map = infer_auto_device_map(
-            critic,
-            no_split_module_classes=["LoraLayer"],
-            dtype=torch.float16,
-        )
+        critic.dtype=torch.float16
 
         return critic
 
@@ -278,11 +263,9 @@ class LLMAgent(nn.Module):
             do_sample=True,
             use_grad=False,
     ):
-        # Determine actor's device
-        actor_device = next(self.actor.parameters()).device
         inputs = self.tokenizer(
             prompt, return_tensors="pt"
-        ).to(actor_device)
+        )
 
         ctx = torch.enable_grad() if use_grad or self.inference else torch.no_grad()
         with ctx:
