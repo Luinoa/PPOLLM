@@ -76,9 +76,9 @@ class LLMAgent(nn.Module):
         if load_path:
             self.load(load_path)
         else:
-            self.actor = self._init_actor().to(self.device)
+            self.actor = self._init_actor()
             if not inference:
-                self.critic = self._init_critic().to(self.device)
+                self.critic = self._init_critic()
         if inference:
             self.actor.eval()
 
@@ -92,7 +92,7 @@ class LLMAgent(nn.Module):
         )
 
         if not self.load_8bit:
-            model.half().to(self.device)
+            model.half()
         else:
             model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
@@ -166,14 +166,14 @@ class LLMAgent(nn.Module):
         lora_weights = os.path.join(exp_path, "actor")
         critic_weights = os.path.join(exp_path, "critic", "critic.pth")
 
-        self.actor = self._init_actor(lora_weights).to(self.device)
-        self.critic = self._init_critic(critic_weights).to(self.device)
+        self.actor = self._init_actor(lora_weights)
+        self.critic = self._init_critic(critic_weights)
 
     def get_value(self, x):
         assert not self.inference
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
-        input_ids = inputs["input_ids"].to(self.device)
-        attention_mask = inputs["attention_mask"].to(self.device)
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
 
         with self.actor.disable_adapter():
             value = self.critic(input_ids, attention_mask=attention_mask)
@@ -192,7 +192,7 @@ class LLMAgent(nn.Module):
 
         for p, ac_list in zip(prompt, action_list):
             # Tokenize prompt
-            prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False).to(self.device)
+            prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False)
 
             # 先 forward prompt，获得 past_key_values
             with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
@@ -201,7 +201,7 @@ class LLMAgent(nn.Module):
 
             for action_str in ac_list:
                 # Tokenize action（不加 special tokens，保持拼接一致）
-                action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False).to(self.device)
+                action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False)
                 action_input_ids = action_ids["input_ids"]  # [1, T]
                 attention_mask = action_ids["attention_mask"]
 
@@ -227,13 +227,13 @@ class LLMAgent(nn.Module):
                 all_action_logits.append(total_log_prob)
 
         # Convert to tensor
-        action_logits = torch.stack(all_action_logits).to(self.device)
-        action_list_length = torch.tensor(action_list_length).to(self.device)
+        action_logits = torch.stack(all_action_logits)
+        action_list_length = torch.tensor(action_list_length)
 
         if self.normalization_mode == 'token':
-            action_logits = action_logits / action_list_length.to(self.device)
+            action_logits = action_logits / action_list_length
         elif self.normalization_mode == 'word':
-            action_word_num = torch.tensor([len(action.split()) for action in flat_action_list]).to(self.device)
+            action_word_num = torch.tensor([len(action.split()) for action in flat_action_list])
             action_logits = action_logits / action_word_num
         elif self.normalization_mode == 'sum':
             action_logits = action_logits
@@ -279,7 +279,7 @@ class LLMAgent(nn.Module):
             do_sample=True,
             use_grad=False,
     ):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt")
 
         context_manager = torch.enable_grad() if use_grad or self.inference else torch.no_grad()
         with context_manager:
