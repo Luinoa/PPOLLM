@@ -153,7 +153,7 @@ class LLMAgent(nn.Module):
         self.actor.save_pretrained(os.path.join(exp_path, "actor"))
         # save critic
         torch.save({
-            # "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
+            "v_head_mlp1": self.critic.v_head_mlp1.state_dict(),
             "v_head_mlp2": self.critic.v_head_mlp2.state_dict(),
             "v_head_mlp3": self.critic.v_head_mlp3.state_dict()
         }, os.path.join(os.path.join(exp_path, "critic"), "critic.pth"))
