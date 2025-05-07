@@ -98,11 +98,13 @@ class PPOAgentServer:
         self.inference = args.inference
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
-        self.agent = LLMAgent(normalization_mode="word",
-                              inference=args.inference,
-                              base_model=args.model,
-                              lora_r=args.lora_rank,
-                              )
+        self.agent = LLMAgent(
+                            load_path=args.load_path,
+                            normalization_mode="word",
+                            inference=args.inference,
+                            base_model=args.model,
+                            lora_r=args.lora_rank,
+                            )
 
 
         embedding_model_path = f"weights/{args.embedding_model}"
@@ -174,7 +176,7 @@ class PPOAgentServer:
         self.global_step = 1
 
         if not self.inference:
-            self.writer = SummaryWriter(f"{args.record_path}")
+            self.writer = SummaryWriter(f"{args.record_path}/logs")
             self.trainer = PPOTrainer(self.agent, args, self.writer)
 
     def new_task(self) -> str:

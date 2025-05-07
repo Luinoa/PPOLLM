@@ -168,6 +168,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--record-path', action='store', type=str, default="weights/PPO",
                         help='The path to save the tensorboard results')
+    parser.add_argument('--load-path', action='store', type=str, default=None,
+                        help='The path to load the model weights')
 
     parser.add_argument('-p', '--port', action='store', type=int, default=8000,
                         help="Port number for the server")
