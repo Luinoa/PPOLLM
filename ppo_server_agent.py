@@ -163,6 +163,7 @@ class PPOAgentServer:
             "You are an expert in App GUI testing to guide the testing tool to enhance the coverage of "
             "functional scenarios in testing the App based on your extensive App testing experience."
             "I'll give you a obs and you need to polish the obs based on the history and action taken by the user."
+            "I need you to help me find the ui tarpit and avoid it in the future."
             "Please provide me with the polished obs,not the answer."
             "\n\n{context}"
         )
