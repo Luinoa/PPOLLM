@@ -121,6 +121,9 @@ class LLMAgent(nn.Module):
                 lora_weights,
                 torch_dtype=torch.float16,
             )
+            for name, param in model.named_parameters():
+                if 'lora_' in name:
+                    param.requires_grad = True
 
         """
         if torch.__version__ >= "2" and sys.platform != "win32":
