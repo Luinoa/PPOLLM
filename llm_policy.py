@@ -76,7 +76,6 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor()
             if not inference:
                 self.critic = self._init_critic()
-            self.save(0,load_path)
         if inference:
             self.actor.eval()
 
