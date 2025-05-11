@@ -350,7 +350,7 @@ class PPOAgentServer:
                         # Log the training step information
                         print(f"[INFO] Training step {self.global_step}: {format_info(tmp_info)}")
 
-                        self.agent.save(self.global_step, self.args.record_path)
+                        self.agent.save(self.global_step, self.args.load_path)
                         self.global_step += 1
                         self.writer.flush()
         else:
