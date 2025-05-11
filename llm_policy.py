@@ -76,6 +76,7 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor()
             if not inference:
                 self.critic = self._init_critic()
+            self.save(0,load_path)
         if inference:
             self.actor.eval()
 
@@ -141,6 +142,7 @@ class LLMAgent(nn.Module):
             critic.v_head_mlp1.load_state_dict(ckpt["v_head_mlp1"])
             critic.v_head_mlp2.load_state_dict(ckpt["v_head_mlp2"])
             critic.v_head_mlp3.load_state_dict(ckpt["v_head_mlp3"])
+
         return critic
 
     def save(self, epoch, exp_path):
