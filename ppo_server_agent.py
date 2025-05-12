@@ -238,7 +238,9 @@ class PPOAgentServer:
             self.store[session_id] = ChatMessageHistory()
         return self.store[session_id]
 
-    def rag_step(self, task_id: str, obs: Union[str, List[str]]) -> Tuple[str, Any]:
+    def rag_step(
+            self, task_id: str, obs: Dict[str, Union[str, List[str]]]
+    ) -> Tuple[str, Any]:
         """
         Take one RAG step given chat history. Returns the next action.
         """
@@ -282,7 +284,7 @@ class PPOAgentServer:
         return action_sampled
 
     def step(
-            self, task_id: str, obs: Union[str, List[str]]
+            self, task_id: str, obs: Dict[str, Union[str, List[str]]]
     ) -> Tuple[str, Any]:
         """
         Take one interaction step given prompt or observation. Returns the next action.

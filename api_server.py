@@ -87,7 +87,7 @@ async def rag_step(req: StepRequest):
     if not ppo_agent.check_task(task_id):
         return {"error": "Invalid task ID"}
 
-    response = ppo_agent.step(task_id, obs)
+    response = ppo_agent.rag_step(task_id, obs)
     return {"task_id": task_id, "status": "ok", "action": int(response)}
 
 
