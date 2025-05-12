@@ -351,7 +351,6 @@ class PPOAgentServer:
 
                         # Log the training step information
                         print(f"[INFO] Training step {self.global_step}: {format_info(tmp_info)}")
-                        self.args.load_path="weights/PPO"
                         self.agent.save(self.global_step, self.args.load_path)
                         self.global_step += 1
                         self.writer.flush()
