@@ -275,7 +275,7 @@ class PPOAgentServer:
 
         # Store the pending state for later use
         session.pending = {
-            "obs": obs,
+            "obs": rag_result,
             "action": action,
             "logprob": logprob,
             "value": value
