@@ -8,6 +8,48 @@
 
 ---
 
+# 部署流程
+
+请确保您已经配置好 PyTorch 和 cuda 环境，并且根据当前机器配置，适当调整环境。
+
+首先，请 git 我们的仓库，然后安装必要的库：
+
+```bash
+git clone https://github.com/Luinoa/PPOLLM.git
+pip install -r requirements.txt
+```
+
+再根据 shell 文件夹下的脚本，写出时候你的环境和需求的脚本，在根目录下运行，即可开始使用，对于参数的具体意义，请根据 api_server.py 下的描述进行使用，这里不再赘述。
+
+如：
+
+```
+#!/bin/bash
+# This script is used to run the inference server with large model.
+
+export HF_ENDPOINT=https://hf-mirror.com
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+
+
+python ./api_server.py \
+-t \
+-p 8001 \
+--policy-minibatch-size 1 \
+--model Qwen/Qwen3-8B \
+--load-path weights/PPO
+```
+
+特别注意：
+
+--policy-minibatch-size 内存极端敏感，谨慎调节。
+
+--model 建议使用支持 Accelerate 框架多卡推理的 HuggingFace 模型，根据我们的实验，8B 模型需要约 50G 显存（至少 3 张 3090）进行微调。
+
+部署过程中要是还缺什么，可以试试“缺啥补啥”。
+
+---
+
+
 # 原理
 
 ## 主要原理
@@ -35,8 +77,15 @@
 
 为了解决这个问题，我们则是使用了 KV cache 先缓存 prompt，再处理 action，将我们的空间复杂度降到了 O(M+N)，大幅降低了内存使用，成功解决了频繁出现 OOM 的问题。
 
+## RAG整合
+在普通推理的基础上，我们设计了一种RAG推理方法，使用检索增强的观测（结合历史上下文）生成动作。我们在 PPO 的基础上，增加了一个 RAG 步进接口 `rag_step`，
+该接口会在每次 step 之后，使用检索增强的观测（结合历史上下文）生成动作。
 
-另外，还有很多小的参数上的改进，这里不再赘述。
+改方法还未充分测试。
+
+---
+
+另外，还有很多小的细节上的改进，这里不再赘述。
 
 ---
 
@@ -149,7 +198,7 @@
 {
   "task_id": "string",
   "status": "ok",
-  "action": int
+  "action": 0
 }
 ```
 
@@ -182,7 +231,7 @@ action 列表过大可能会导致推理时间延长、OOM，在请求时，请�
 {
   "task_id": "string",
   "status": "ok",
-  "action": int
+  "action": 0
 }
 ```
 
@@ -213,44 +262,3 @@ action 列表过大可能会导致推理时间延长、OOM，在请求时，请�
   "status": "ok"
 }
 ```
-
----
-
-# 部署流程
-
-请确保您已经配置好 PyTorch 和 cuda 环境，并且根据当前机器配置，适当调整环境。
-
-首先，请 git 我们的仓库，然后安装必要的库：
-
-```bash
-git clone https://github.com/Luinoa/PPOLLM.git
-pip install -r requirements.txt
-```
-
-再根据 shell 文件夹下的脚本，写出时候你的环境和需求的脚本，在根目录下运行，即可开始使用，对于参数的具体意义，请根据 api_server.py 下的描述进行使用，这里不再赘述。
-
-如：
-
-```
-#!/bin/bash
-# This script is used to run the inference server with large model.
-
-export HF_ENDPOINT=https://hf-mirror.com
-export CUDA_VISIBLE_DEVICES=4,5,6,7
-
-
-python ./api_server.py \
--t \
--p 8001 \
---policy-minibatch-size 1 \
---model Qwen/Qwen3-8B \
---load-path weights/PPO
-```
-
-特别注意：
-
---policy-minibatch-size 内存极端敏感，谨慎调节。
-
---model 建议使用支持 Accelerate 框架多卡推理的 HuggingFace 模型，根据我们的实验，8B 模型需要约 50G 显存（至少 3 张 3090）进行微调。
-
-部署过程中要是还缺什么，可以试试“缺啥补啥”。
