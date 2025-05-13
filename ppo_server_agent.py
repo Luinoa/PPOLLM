@@ -86,6 +86,15 @@ class LLMTaskSession:
         self.status = "attached"
 
 
+def _format_obs(obs: Dict[str, Union[str, List[str]]]) -> str:
+    parts = []
+    for k, v in obs.items():
+        if isinstance(v, list):
+            v = ", ".join(map(str, v))
+        parts.append(f"{k}: {v}")
+    return " | ".join(parts)
+
+
 class PPOAgentServer:
     def __init__(self, args):
         """
@@ -98,13 +107,12 @@ class PPOAgentServer:
         self.sessions: Dict[str, LLMTaskSession] = {}
         self.lock = threading.Lock()
         self.agent = LLMAgent(
-                            load_path=args.load_path,
-                            normalization_mode="word",
-                            inference=args.inference,
-                            base_model=args.model,
-                            lora_r=args.lora_rank,
-                            )
-
+            load_path=args.load_path,
+            normalization_mode="word",
+            inference=args.inference,
+            base_model=args.model,
+            lora_r=args.lora_rank,
+        )
 
         embedding_model_path = f"weights/{args.embedding_model}"
         if not os.path.exists(embedding_model_path):
@@ -152,7 +160,7 @@ class PPOAgentServer:
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
             [("system", contextualize_q_system_prompt),
              MessagesPlaceholder("chat_history"),
-             ("human", "{input}"),]
+             ("human", "{input}"), ]
         )
         self.history_aware_retriever = create_history_aware_retriever(self.agent, self.retriever,
                                                                       contextualize_q_prompt)
@@ -168,7 +176,7 @@ class PPOAgentServer:
         )
         qa_prompt = ChatPromptTemplate.from_messages([("system", system_prompt),
                                                       MessagesPlaceholder("chat_history"),
-                                                       ("human", "{input}"),])
+                                                      ("human", "{input}"), ])
         question_answer_chain = create_stuff_documents_chain(self.agent, qa_prompt)
 
         self.rag_chain = create_retrieval_chain(self.history_aware_retriever, question_answer_chain)
@@ -231,7 +239,6 @@ class PPOAgentServer:
             session.status = "pending"
             return True
 
-
     def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
         if session_id not in self.store:
             self.store[session_id] = ChatMessageHistory()
@@ -254,11 +261,12 @@ class PPOAgentServer:
             input_messages_key="input",
             history_messages_key="chat_history",
             output_messages_key="polished_obs",
-            )
+        )
 
+        obs_str = _format_obs(obs)
         # Use the observation and task ID to generate an enhanced action or answer using RAG
         rag_result = conversational_rag_chain.invoke(
-            {"input": obs},
+            {"input": obs_str},
             config={"configurable": {"session_id": task_id}},
         )["polished_obs"]
 
