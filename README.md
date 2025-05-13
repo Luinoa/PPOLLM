@@ -35,45 +35,6 @@
 
 为了解决这个问题，我们则是使用了 KV cache 先缓存 prompt，再处理 action，将我们的空间复杂度降到了 O(M+N)，大幅降低了内存使用，成功解决了频繁出现 OOM 的问题。
 
-以下代码显示出我们的关键改进：
-
-```
-for p, ac_list in zip(prompt, action_list):
-    _# Tokenize prompt_
-_    _prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False)
-
-    _# 先 forward prompt，获得 past_key_values_
-_    _with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
-        prompt_outputs = self.actor(**prompt_ids, use_cache=True)
-    past_key_values = prompt_outputs.past_key_values
-
-    for action_str in ac_list:
-        _# Tokenize action（不加 special tokens，保持拼接一致）_
-_        _action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False)
-        action_input_ids = action_ids["input_ids"]  _# [1, T]_
-_        _attention_mask = action_ids["attention_mask"]
-
-        action_len = attention_mask.sum().item()
-        action_list_length.append(action_len)
-
-        _# 用 past_key_values 推理 action（不再缓存）_
-_        _with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
-            outputs = self.actor(
-                input_ids=action_input_ids,
-                past_key_values=past_key_values,
-                use_cache=False
-            )
-            logits = torch.log_softmax(outputs.logits, dim=-1)  _# [1, T, V]_
-
-_        # Shift logits and compute log probs_
-_        _shifted_logits = logits[:, :-1, :]  _# ignore last prediction_
-_        _shifted_input_ids = action_input_ids[:, 1:]  _# target tokens_
-_        _log_probs = torch.gather(shifted_logits, 2, shifted_input_ids[:, :, None]).squeeze(-1)  _# [1, T-1]_
-
-_        # Sum log probs (you can average later if needed)_
-_        _total_log_prob = log_probs.sum(dim=1).squeeze(0)  _# scalar_
-_        _all_action_logits.append(total_log_prob)
-```
 
 另外，还有很多小的参数上的改进，这里不再赘述。
 
@@ -271,8 +232,8 @@ pip install -r requirements.txt
 如：
 
 ```
-**#!/bin/bash**
-_# This script is used to run the inference server with large model._
+#!/bin/bash
+# This script is used to run the inference server with large model.
 
 export HF_ENDPOINT=https://hf-mirror.com
 export CUDA_VISIBLE_DEVICES=4,5,6,7
@@ -291,3 +252,5 @@ python ./api_server.py \
 --policy-minibatch-size 内存极端敏感，谨慎调节。
 
 --model 建议使用支持 Accelerate 框架多卡推理的 HuggingFace 模型，根据我们的实验，8B 模型需要约 50G 显存（至少 3 张 3090）进行微调。
+
+部署过程中要是还缺什么，可以试试“缺啥补啥”。
