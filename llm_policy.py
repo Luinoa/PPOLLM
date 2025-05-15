@@ -107,7 +107,7 @@ class LLMAgent(nn.Module):
             )
             model = get_peft_model(self.llm, config)
 
-            model.print_trainable_parameters()
+            # model.print_trainable_parameters()
 
             old_state_dict = model.state_dict
             model.state_dict = (
