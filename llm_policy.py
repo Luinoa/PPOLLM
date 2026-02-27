@@ -200,13 +200,13 @@ class LLMAgent(nn.Module):
             # Tokenize prompt
             prompt_ids = self.tokenizer(p, return_tensors="pt", add_special_tokens=False)
 
-            # 先 forward prompt，获得 past_key_values
+            # forward prompt
             with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
                 prompt_outputs = self.actor(**prompt_ids, use_cache=True)
             past_key_values = prompt_outputs.past_key_values
 
             for action_str in ac_list:
-                # Tokenize action（不加 special tokens，保持拼接一致）
+                # Tokenize action
                 action_ids = self.tokenizer(action_str, return_tensors="pt", add_special_tokens=False)
                 action_input_ids = action_ids["input_ids"]  # [1, T]
                 attention_mask = action_ids["attention_mask"]
@@ -214,7 +214,7 @@ class LLMAgent(nn.Module):
                 action_len = attention_mask.sum().item()
                 action_list_length.append(action_len)
 
-                # 用 past_key_values 推理 action（不再缓存）
+                # infer action logits
                 with torch.no_grad() if self.inference or no_grad else torch.enable_grad():
                     outputs = self.actor(
                         input_ids=action_input_ids,
@@ -228,7 +228,7 @@ class LLMAgent(nn.Module):
                 shifted_input_ids = action_input_ids[:, 1:]  # target tokens
                 log_probs = torch.gather(shifted_logits, 2, shifted_input_ids[:, :, None]).squeeze(-1)  # [1, T-1]
 
-                # Sum log probs (you can average later if needed)
+                # Sum log probs
                 total_log_prob = log_probs.sum(dim=1).squeeze(0)  # scalar
                 all_action_logits.append(total_log_prob)
 
